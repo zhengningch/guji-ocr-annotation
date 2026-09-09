@@ -1,4 +1,4 @@
-import { createClient, type User } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config'
 import './style.css'
 
@@ -47,8 +47,8 @@ const multiOptions: Record<string, string[]> = {
   特殊文字: ['无', '异体字', '生僻字', '避讳字', '小篆', '未编码字符', '残损字', '古文符号', '其他'],
 }
 
-let user: User | null = null
-let displayName = ''
+let userToken = localStorage.getItem('guji_user_token') ?? ''
+let displayName = localStorage.getItem('guji_nickname') ?? ''
 let tasks: Task[] = []
 let filtered: Task[] = []
 let currentIndex = 0
@@ -66,54 +66,39 @@ const current = () => filtered[currentIndex]
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 
 async function boot() {
-  const { data } = await supabase.auth.getSession()
-  user = data.session?.user ?? null
-  supabase.auth.onAuthStateChange((_event, session) => {
-    const next = session?.user ?? null
-    if (next?.id !== user?.id) { user = next; next ? startApp() : renderAuth() }
-  })
-  user ? await startApp() : renderAuth()
+  userToken ? await startApp() : renderAuth()
 }
 
 function renderAuth(message = '') {
   app.innerHTML = `<main class="auth-page"><section class="auth-card">
-    <div class="auth-logo">古</div><h1>古籍 OCR 标注</h1><p>登录后进入协作标注工作台</p>
+    <div class="auth-logo">古</div><h1>古籍 OCR 标注</h1><p>输入昵称和项目密码即可进入</p>
     ${message ? `<div class="auth-message">${esc(message)}</div>` : ''}
     <form id="loginForm">
-      <label>显示姓名<input name="name" placeholder="首次注册时填写"></label>
-      <label>邮箱<input name="email" type="email" required autocomplete="email"></label>
-      <label>密码<input name="password" type="password" minlength="6" required autocomplete="current-password"></label>
-      <button class="primary" type="submit">登录</button>
-      <button class="secondary" type="button" id="signupBtn">注册账号</button>
-    </form><small>标注结果保存在 Supabase，图片由 GitHub Pages 提供。</small>
+      <label>昵称<input name="name" required maxlength="30" autocomplete="username" placeholder="如：小林"></label>
+      <label>项目密码<input name="password" type="password" required autocomplete="current-password"></label>
+      <button class="primary" type="submit">进入标注工作台</button>
+    </form><small>昵称首次使用时自动创建；再次使用同一昵称即登录原账户。</small>
   </section></main>`
   const form = document.querySelector<HTMLFormElement>('#loginForm')!
   form.addEventListener('submit', async event => {
     event.preventDefault(); setAuthBusy(true)
-    const fd = new FormData(form)
-    const { error } = await supabase.auth.signInWithPassword({ email: String(fd.get('email')), password: String(fd.get('password')) })
-    if (error) { setAuthBusy(false); renderAuth(error.message === 'Invalid login credentials' ? '邮箱或密码错误' : error.message) }
-  })
-  document.querySelector('#signupBtn')!.addEventListener('click', async () => {
-    const fd = new FormData(form); const email = String(fd.get('email')); const password = String(fd.get('password')); const name = String(fd.get('name')).trim()
-    if (!email || password.length < 6 || !name) return renderAuth('注册时请填写姓名、邮箱和至少 6 位密码')
-    setAuthBusy(true)
-    const { error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: name } } })
-    setAuthBusy(false)
-    renderAuth(error ? error.message : '注册成功。若未自动登录，请检查邮箱确认邮件。')
+    const fd = new FormData(form), nickname = String(fd.get('name')).trim()
+    const { data, error } = await supabase.rpc('enter_workspace', { p_nickname: nickname, p_password: String(fd.get('password')) })
+    const result = Array.isArray(data) ? data[0] : data
+    if (error || !result) { setAuthBusy(false); return renderAuth(error?.message?.includes('项目密码错误') ? '项目密码错误' : error?.message || '登录失败') }
+    userToken = result.access_token; displayName = result.nickname
+    localStorage.setItem('guji_user_token', userToken); localStorage.setItem('guji_nickname', displayName)
+    await startApp()
   })
 }
 
 function setAuthBusy(value: boolean) { document.querySelectorAll<HTMLButtonElement>('.auth-card button').forEach(x => x.disabled = value) }
+function logout() { userToken = ''; displayName = ''; localStorage.removeItem('guji_user_token'); localStorage.removeItem('guji_nickname'); renderAuth() }
 
 async function startApp() {
   renderLoading()
-  const [{ data: profile }, { data, error }] = await Promise.all([
-    supabase.from('profiles').select('display_name').eq('id', user!.id).maybeSingle(),
-    supabase.from('tasks').select('*').order('sample_id', { ascending: true }),
-  ])
-  if (error) return renderSetupError(error.message)
-  displayName = profile?.display_name || user?.user_metadata?.display_name || user?.email?.split('@')[0] || '标注员'
+  const { data, error } = await supabase.rpc('get_workspace_tasks', { p_token: userToken })
+  if (error) { if (error.message.includes('登录已失效')) return logout(); return renderSetupError(error.message) }
   tasks = (data ?? []) as Task[]
   filtered = [...tasks]
   renderShell()
@@ -123,7 +108,7 @@ async function startApp() {
 function renderLoading() { app.innerHTML = '<div class="page-loading"><div class="auth-logo">古</div><span>正在连接标注数据库…</span></div>' }
 function renderSetupError(message: string) {
   app.innerHTML = `<div class="page-loading error-box"><div class="auth-logo">古</div><b>数据库尚未初始化</b><span>${esc(message)}</span><small>请先在 Supabase SQL Editor 中执行项目的初始化 SQL，并导入 tasks.csv。</small><button id="logout" class="secondary">退出登录</button></div>`
-  document.querySelector('#logout')!.addEventListener('click', () => supabase.auth.signOut())
+  document.querySelector('#logout')!.addEventListener('click', logout)
 }
 
 function renderShell() {
@@ -135,7 +120,7 @@ function renderShell() {
     <div class="user-menu"><span>${esc(displayName)}</span><button id="logoutBtn" title="退出">退出</button></div>
   </header>
   <div id="mainView"></div><div id="toast" class="toast"></div><div id="lightbox" class="lightbox" hidden><button id="closeLightbox">×</button><img alt="古籍大图"></div>`
-  document.querySelector('#logoutBtn')!.addEventListener('click', () => supabase.auth.signOut())
+  document.querySelector('#logoutBtn')!.addEventListener('click', logout)
   document.querySelector('#workspaceTab')!.addEventListener('click', () => switchMode(false))
   document.querySelector('#dashboardTab')!.addEventListener('click', () => switchMode(true))
   document.querySelector('#batchFilter')!.addEventListener('change', applyFilters)
@@ -231,10 +216,9 @@ function markDirty(){dirty=true;updateSaveState()}
 function updateSaveState(message?:string){const x=document.querySelector('#saveState');if(!x)return;x.textContent=message??(dirty?'有未保存修改':'已同步');x.className=dirty?'unsaved':''}
 
 async function save(goNext:boolean){if(!draft||busy)return;busy=true;toggleSave(true);try{
-  const payload={corrected_text:draft.corrected_text,status:draft.status,labels:draft.labels,reviewer_note:draft.reviewer_note,annotator_id:user!.id,annotator_name:displayName}
-  const {data,error}=await supabase.from('tasks').update(payload).eq('sample_id',draft.sample_id).eq('revision',original!.revision).select().maybeSingle()
-  if(error)throw error;if(!data)throw new Error('记录已被其他人修改，请刷新后重试')
-  const pos=tasks.findIndex(x=>x.sample_id===draft!.sample_id);tasks[pos]=data as Task;const fpos=filtered.findIndex(x=>x.sample_id===draft!.sample_id);filtered[fpos]=data as Task;draft=clone(data as Task);original=clone(data as Task);dirty=false;updateSaveState('保存成功');toast('标注已保存')
+  const {data,error}=await supabase.rpc('save_workspace_task',{p_token:userToken,p_sample_id:draft.sample_id,p_revision:original!.revision,p_corrected_text:draft.corrected_text,p_status:draft.status,p_labels:draft.labels,p_reviewer_note:draft.reviewer_note})
+  if(error)throw error;const saved=(Array.isArray(data)?data[0]:data) as Task;if(!saved)throw new Error('保存失败')
+  const pos=tasks.findIndex(x=>x.sample_id===draft!.sample_id);tasks[pos]=saved;const fpos=filtered.findIndex(x=>x.sample_id===draft!.sample_id);filtered[fpos]=saved;draft=clone(saved);original=clone(saved);dirty=false;updateSaveState('保存成功');toast('标注已保存')
   if(goNext&&currentIndex<filtered.length-1){currentIndex++;loadCurrent()}
 }catch(e){updateSaveState('保存失败');toast((e as Error).message,true)}finally{busy=false;toggleSave(false)}}
 function toggleSave(v:boolean){document.querySelectorAll<HTMLButtonElement>('#saveBtn,#saveNextBtn').forEach(x=>x.disabled=v)}
