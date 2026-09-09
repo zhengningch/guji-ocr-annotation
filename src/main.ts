@@ -58,6 +58,8 @@ let dirty = false
 let busy = false
 let zoom = 1
 let rotation = 0
+let panX = 0
+let panY = 0
 let dashboardMode = false
 
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
@@ -132,20 +134,28 @@ function renderShell() {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); save(false) }
     if (!dashboardMode && event.altKey && event.key === 'ArrowLeft') navigate(-1)
     if (!dashboardMode && event.altKey && event.key === 'ArrowRight') navigate(1)
+    if (!dashboardMode && event.altKey && /^[1-7]$/.test(event.key)) {
+      event.preventDefault()
+      const symbols=['□','、','=','-','~','<note></note>','<ignore></ignore>']
+      insertSymbol(symbols[Number(event.key)-1])
+    }
     if (event.key === 'Escape') closeLightbox()
   }
   renderWorkspace()
 }
 
 function renderWorkspace() {
-  document.querySelector('#mainView')!.innerHTML = `<main class="workspace">
-    <section class="viewer"><div class="viewer-toolbar"><span id="imageTitle">图片</span><div><button id="zoomOut">−</button><button id="fitImage">适应</button><button id="zoomIn">＋</button><button id="rotateImage">↻</button><button id="fullImage">全屏</button></div></div><div id="imageStage" class="image-stage"></div></section>
+  const split = localStorage.getItem('guji_split') || '55%'
+  document.querySelector('#mainView')!.innerHTML = `<main class="workspace" style="--left-pane:${split}">
+    <section class="viewer"><div class="viewer-toolbar"><span id="imageTitle">图片</span><div><button id="zoomOut" title="缩小">−</button><button id="fitImage" title="完整显示图片">适应窗口</button><button id="zoomIn" title="放大">＋</button><button id="rotateImage" title="顺时针旋转">↻</button><button id="fullImage" title="全屏查看">全屏</button></div></div><div id="imageStage" class="image-stage" title="滚轮缩放，按住拖动图片"></div></section>
+    <div id="splitter" class="splitter" title="拖动调整左右宽度"></div>
     <section class="editor"><div class="record-nav"><button id="prevBtn" class="secondary">← 上一条</button><button id="nextBtn" class="secondary">下一条 →</button></div><div id="editorBody" class="editor-body"></div><footer class="savebar"><span id="saveState">已同步</span><button id="saveBtn" class="secondary">保存</button><button id="saveNextBtn" class="primary">保存并下一条</button></footer></section>
   </main>`
   document.querySelector('#prevBtn')!.addEventListener('click', () => navigate(-1)); document.querySelector('#nextBtn')!.addEventListener('click', () => navigate(1))
   document.querySelector('#saveBtn')!.addEventListener('click', () => save(false)); document.querySelector('#saveNextBtn')!.addEventListener('click', () => save(true))
-  document.querySelector('#zoomOut')!.addEventListener('click', () => setZoom(zoom - .15)); document.querySelector('#zoomIn')!.addEventListener('click', () => setZoom(zoom + .15)); document.querySelector('#fitImage')!.addEventListener('click', () => setZoom(1))
-  document.querySelector('#rotateImage')!.addEventListener('click', () => { rotation = (rotation + 90) % 360; transformImage() }); document.querySelector('#fullImage')!.addEventListener('click', openLightbox)
+  document.querySelector('#zoomOut')!.addEventListener('click', () => setZoom(zoom / 1.18)); document.querySelector('#zoomIn')!.addEventListener('click', () => setZoom(zoom * 1.18)); document.querySelector('#fitImage')!.addEventListener('click', fitImage)
+  document.querySelector('#rotateImage')!.addEventListener('click', () => { rotation = (rotation + 90) % 360; fitImage() }); document.querySelector('#fullImage')!.addEventListener('click', openLightbox)
+  bindImageInteractions(); bindSplitter()
 }
 
 function switchMode(dashboard: boolean) {
@@ -168,15 +178,17 @@ function loadCurrent() {
   if (!current()) {
     document.querySelector('#editorBody')!.innerHTML = '<div class="empty"><b>没有符合条件的任务</b><span>请调整筛选条件</span></div>'; document.querySelector('#imageStage')!.innerHTML = '<div class="empty light">暂无图片</div>'; updateProgress(); return
   }
-  draft = clone(current()); original = clone(current()); dirty = false; zoom = 1; rotation = 0
+  draft = clone(current()); original = clone(current()); dirty = false; zoom = 1; rotation = 0; panX = 0; panY = 0
   renderImage(); renderEditor(); updateProgress()
 }
 
 function imageUrl(task = draft!) { return `${location.origin}${basePath}images/${encodeURIComponent(task.image_path)}` }
 function renderImage() {
   const url = imageUrl(); document.querySelector('#imageTitle')!.textContent = `样本 ${draft!.sample_id} · ${draft!.original_filename}`
-  document.querySelector('#imageStage')!.innerHTML = `<img id="mainImage" src="${url}" alt="样本 ${draft!.sample_id}">`
-  document.querySelector('#mainImage')!.addEventListener('dblclick', openLightbox)
+  document.querySelector('#imageStage')!.innerHTML = `<img id="mainImage" draggable="false" src="${url}" alt="样本 ${draft!.sample_id}">`
+  const image = document.querySelector<HTMLImageElement>('#mainImage')!
+  image.addEventListener('load', fitImage)
+  image.addEventListener('dblclick', openLightbox)
 }
 
 function renderEditor() {
@@ -185,7 +197,10 @@ function renderEditor() {
     <div class="record-head"><div><span class="eyebrow">当前样本</span><h1>#${draft!.sample_id}</h1></div><div class="badges"><span>${esc(draft!.batch)}</span><span class="status-${statusClass(draft!.status)}">${esc(draft!.status)}</span></div></div>
     <div class="annotator-note">${draft!.annotator_name ? `标注人：${esc(draft!.annotator_name)}` : '首次保存时自动记录当前标注人'}</div>
     <label class="field-label" for="correctedText">校订文本 <em>主要填写区</em></label><textarea id="correctedText" class="main-text" spellcheck="false">${esc(draft!.corrected_text)}</textarea>
-    <div class="symbolbar"><span>快速插入</span>${['□','●','○','、','◎','=','-','~','【】','<note></note>','<ignore></ignore>'].map(x => `<button data-symbol="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+    <div class="symbolbar"><span>校订符号</span>${[
+      ['□','□ 残损字'],['、','、 删除符'],['=','= 重文号'],['-','- 重文号'],['~','~ 交换符'],['<note></note>','标注区'],['<ignore></ignore>','非转录区']
+    ].map(([value,label],i) => `<button data-symbol="${esc(value)}" title="快捷键 Alt+${i+1}">${esc(label)}</button>`).join('')}</div>
+    <p class="rule-hint">逐列换行 · 不加现代标点 · 保留原字形 · 无法辨认用 □</p>
     <div class="essential-grid">${selectField('任务状态', draft!.status)}${selectField('页面位置', l.页面位置)}${selectField('图文版面', l.图文版面)}${selectField('阅读顺序', l.阅读顺序)}</div>
     ${multiField('特殊文字', l.特殊文字)}${multiField('阅读痕迹', l.阅读痕迹)}${multiField('磨损情况', l.磨损情况)}${multiField('数字化干扰', l.数字化干扰)}${textField('疑难说明', l.疑难说明, '无法判断或规范未覆盖的问题')}
     <details><summary><span>更多版本属性</span><small>时代、地域、版式等低频字段</small></summary><div class="details-body"><div class="essential-grid">${selectField('内容部类',l.内容部类)}${selectField('制作方式',l.制作方式)}${selectField('时代',l.时代)}${selectField('国家地区',l.国家地区)}${selectField('刻印单位',l.刻印单位)}${selectField('界行',l.界行)}${selectField('版框',l.版框)}${selectField('版心',l.版心)}${selectField('书耳',l.书耳)}${selectField('印章',l.印章)}</div>${multiField('鱼尾',l.鱼尾)}${multiField('字体',l.字体)}<div class="essential-grid">${textField('刻印地域',l.刻印地域)}${textField('行款',l.行款)}${textField('象鼻',l.象鼻)}</div></div></details>
@@ -225,7 +240,26 @@ function toggleSave(v:boolean){document.querySelectorAll<HTMLButtonElement>('#sa
 function navigate(delta:number){if(dirty&&!confirm('当前修改尚未保存，确定离开吗？'))return;const n=currentIndex+delta;if(n<0||n>=filtered.length)return toast(n<0?'已经是第一条':'已经是最后一条');currentIndex=n;loadCurrent()}
 function jumpToSample(){const n=Number((document.querySelector('#sampleSearch')as HTMLInputElement).value),i=filtered.findIndex(x=>x.sample_id===n);if(i<0)return toast('当前筛选范围内未找到该编号',true);if(dirty&&!confirm('当前修改尚未保存，确定跳转吗？'))return;currentIndex=i;loadCurrent()}
 function updateProgress(){document.querySelector('#progressText')!.textContent=filtered.length?`${currentIndex+1} / ${filtered.length} · 总计 ${tasks.length} 条`:`0 / 0 · 总计 ${tasks.length} 条`;const p=document.querySelector<HTMLButtonElement>('#prevBtn'),n=document.querySelector<HTMLButtonElement>('#nextBtn');if(p)p.disabled=currentIndex<=0;if(n)n.disabled=currentIndex>=filtered.length-1}
-function setZoom(v:number){zoom=Math.min(4,Math.max(.3,v));transformImage()}function transformImage(){const x=document.querySelector<HTMLImageElement>('#mainImage');if(x)x.style.transform=`scale(${zoom}) rotate(${rotation}deg)`}
+function fitImage(){
+  const image=document.querySelector<HTMLImageElement>('#mainImage'),stage=document.querySelector<HTMLElement>('#imageStage');if(!image||!stage||!image.naturalWidth)return
+  const rotated=rotation%180!==0,w=rotated?image.naturalHeight:image.naturalWidth,h=rotated?image.naturalWidth:image.naturalHeight
+  zoom=Math.min((stage.clientWidth-36)/w,(stage.clientHeight-36)/h,1);panX=0;panY=0;transformImage()
+}
+function setZoom(v:number){zoom=Math.min(5,Math.max(.08,v));transformImage()}
+function transformImage(){const x=document.querySelector<HTMLImageElement>('#mainImage');if(x)x.style.transform=`translate(-50%,-50%) translate(${panX}px,${panY}px) scale(${zoom}) rotate(${rotation}deg)`}
+function bindImageInteractions(){
+  const stage=document.querySelector<HTMLElement>('#imageStage')!;let dragging=false,lastX=0,lastY=0
+  stage.addEventListener('wheel',e=>{e.preventDefault();setZoom(zoom*(e.deltaY<0?1.12:.89))},{passive:false})
+  stage.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;stage.setPointerCapture(e.pointerId);stage.classList.add('dragging')})
+  stage.addEventListener('pointermove',e=>{if(!dragging)return;panX+=e.clientX-lastX;panY+=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;transformImage()})
+  const end=()=>{dragging=false;stage.classList.remove('dragging')};stage.addEventListener('pointerup',end);stage.addEventListener('pointercancel',end)
+}
+function bindSplitter(){
+  const split=document.querySelector<HTMLElement>('#splitter')!,workspace=document.querySelector<HTMLElement>('.workspace')!;let active=false
+  split.addEventListener('pointerdown',e=>{active=true;split.setPointerCapture(e.pointerId);split.classList.add('active')})
+  split.addEventListener('pointermove',e=>{if(!active)return;const r=workspace.getBoundingClientRect(),pct=Math.min(70,Math.max(35,(e.clientX-r.left)/r.width*100));workspace.style.setProperty('--left-pane',`${pct}%`);localStorage.setItem('guji_split',`${pct}%`);fitImage()})
+  const end=()=>{active=false;split.classList.remove('active')};split.addEventListener('pointerup',end);split.addEventListener('pointercancel',end)
+}
 function openLightbox(){if(!draft)return;const x=document.querySelector<HTMLDivElement>('#lightbox')!;x.hidden=false;x.querySelector('img')!.src=imageUrl()}function closeLightbox(){const x=document.querySelector<HTMLDivElement>('#lightbox');if(x)x.hidden=true}
 function statusClass(s:string){return s==='已完成'?'done':s==='有疑问'?'warn':s==='待复核'?'review':'todo'}
 function toast(msg:string,error=false){const x=document.querySelector('#toast')!;x.textContent=msg;x.className=`toast show${error?' error':''}`;setTimeout(()=>x.className='toast',2400)}
