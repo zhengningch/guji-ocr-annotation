@@ -25,28 +25,28 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
 const app = document.querySelector<HTMLDivElement>('#app')!
 const selectOptions: Record<string, string[]> = {
   任务状态: ['待标注', '标注中', '待复核', '已完成', '有疑问'],
-  内容部类: ['经部', '史部', '子部', '集部', '主观题', '不确定'],
-  页面位置: ['封面', '牌记', '序', '跋', '目录', '正文', '主观题', '不确定'],
-  制作方式: ['雕版刻本', '稿抄本', '活字本', '主观题'],
-  时代: ['唐五代', '宋', '辽金', '元', '明', '清', '民国', '主观题', '不确定'],
-  刻印地域: ['浙本', '蜀本', '建本', '平水本', '日本', '朝鲜', '越南', '主观题', '不确定'],
-  刻印单位: ['官刻本', '坊刻本', '家刻本', '主观题', '不确定'],
-  栏数: ['一', '二', '三', '主观题'],
-  界行: ['无界行', '乌丝栏', '朱丝栏', '主观题', '不确定'],
-  版框: ['无边栏', '四周单边', '四周双边', '左右单边', '左右双边', '主观题', '不确定'],
-  版心: ['有', '无', '主观题', '不确定'],
-  象鼻: ['白口', '黑口', '花口', '主观题', '不确定'],
-  书耳: ['有', '无', '主观题', '不确定'],
-  字体: ['楷书', '行书', '草书', '隶书', '篆书', '主观题', '不确定'],
-  图文版面: ['无', '图文混排', '以图为主', '图表类', '主观题'],
-  印章: ['无', '有但不转录', '纯印章样本', '主观题', '不确定'],
+  内容部类: ['经部', '史部', '子部', '集部', '其他', '不确定'],
+  页面位置: ['封面', '牌记', '序', '跋', '目录', '正文', '其他', '不确定'],
+  制作方式: ['雕版刻本', '稿抄本', '活字本', '其他'],
+  时代: ['唐五代', '宋', '辽金', '元', '明', '清', '民国', '其他', '不确定'],
+  刻印地域: ['浙本', '蜀本', '建本', '平水本', '日本', '朝鲜', '越南', '其他', '不确定'],
+  刻印单位: ['官刻本', '坊刻本', '家刻本', '其他', '不确定'],
+  栏数: ['一', '二', '三', '其他'],
+  界行: ['无界行', '乌丝栏', '朱丝栏', '其他', '不确定'],
+  版框: ['无边栏', '四周单边', '四周双边', '左右单边', '左右双边', '其他', '不确定'],
+  版心: ['有', '无', '其他', '不确定'],
+  象鼻: ['白口', '黑口', '花口', '其他', '不确定'],
+  书耳: ['有', '无', '其他', '不确定'],
+  字体: ['楷书', '行书', '草书', '隶书', '篆书', '其他', '不确定'],
+  图文版面: ['无', '图文混排', '以图为主', '图表类', '其他'],
+  印章: ['无', '有但不转录', '纯印章样本', '其他', '不确定'],
   阅读顺序: ['从右到左', '从左到右', '复杂顺序', '不确定'],
 }
 const multiOptions: Record<string, string[]> = {
-  鱼尾: ['无', '黑鱼尾', '白鱼尾', '花鱼尾', '单鱼尾', '双鱼尾', '三鱼尾', '顺鱼尾', '对鱼尾', '主观题', '不确定'],
-  阅读痕迹: ['无', '批注', '圈点', '训读', '墨钉', '涂改删除', '主观题'],
-  磨损情况: ['无明显磨损', '水渍', '油污', '虫洞', '漏字', '透字', '模糊', '遮挡', '残损', '主观题'],
-  数字化干扰: ['无', '水印', '光照不均', '折痕', '倾斜', '形变', '屏幕拍摄', '扫描噪声', '裁切不全', '主观题'],
+  鱼尾: ['无', '黑鱼尾', '白鱼尾', '花鱼尾', '单鱼尾', '双鱼尾', '三鱼尾', '顺鱼尾', '对鱼尾', '其他', '不确定'],
+  阅读痕迹: ['无', '批注', '圈点', '训读', '墨钉', '涂改删除', '其他'],
+  磨损情况: ['无明显磨损', '水渍', '油污', '虫洞', '漏字', '透字', '模糊', '遮挡', '残损', '其他'],
+  数字化干扰: ['无', '水印', '光照不均', '折痕', '倾斜', '形变', '屏幕拍摄', '扫描噪声', '裁切不全', '其他'],
 }
 
 let userToken = localStorage.getItem('guji_user_token') ?? ''
@@ -63,6 +63,7 @@ let rotation = 0
 let panX = 0
 let panY = 0
 let dashboardMode = false
+let undoText: string | null = null
 
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 const basePath = import.meta.env.BASE_URL
@@ -136,9 +137,9 @@ function renderShell() {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); save(false) }
     if (!dashboardMode && event.altKey && event.key === 'ArrowLeft') navigate(-1)
     if (!dashboardMode && event.altKey && event.key === 'ArrowRight') navigate(1)
-    if (!dashboardMode && event.altKey && /^[1-5]$/.test(event.key)) {
+    if (!dashboardMode && event.altKey && /^[1-6]$/.test(event.key)) {
       event.preventDefault()
-      const symbols=['□','=','○','【】','<>']
+      const symbols=['□','=','。','、','【】','<>']
       insertSymbol(symbols[Number(event.key)-1])
     }
     if (event.key === 'Escape') closeLightbox()
@@ -180,7 +181,7 @@ function loadCurrent() {
   if (!current()) {
     document.querySelector('#editorBody')!.innerHTML = '<div class="empty"><b>没有符合条件的任务</b><span>请调整筛选条件</span></div>'; document.querySelector('#imageStage')!.innerHTML = '<div class="empty light">暂无图片</div>'; updateProgress(); return
   }
-  draft = clone(current()); original = clone(current()); dirty = false; zoom = 1; rotation = 0; panX = 0; panY = 0
+  draft = clone(current()); original = clone(current()); dirty = false; zoom = 1; rotation = 0; panX = 0; panY = 0; undoText = null
   draft.labels ||= {}
   draft.labels.制作方式 ||= '雕版刻本'
   draft.labels.栏数 ||= '一'
@@ -205,30 +206,32 @@ function renderEditor() {
     <div class="annotator-note">${draft!.annotator_name ? `标注人：${esc(draft!.annotator_name)}` : '首次保存时自动记录当前标注人'}</div>
     <label class="field-label" for="correctedText">校订文本 <em>主要填写区</em></label><textarea id="correctedText" class="main-text" spellcheck="false">${esc(draft!.corrected_text)}</textarea>
     <div class="symbolbar"><span>校订符号</span>${[
-      ['□','残损字'],['=','重文号'],['○','圈点'],['【】','小字【】'],['<>','批注<>']
-    ].map(([value,label],i) => `<button data-symbol="${esc(value)}" title="快捷键 Alt+${i+1}">${esc(label)}</button>`).join('')}</div>
+      ['□','残损字'],['=','重文号'],['。','圈点。'],['、','圈点、'],['【】','小字【】'],['<>','批注<>']
+    ].map(([value,label],i) => `<button data-symbol="${esc(value)}" title="快捷键 Alt+${i+1}">${esc(label)}</button>`).join('')}<button id="undoText" class="undo-button" disabled>↶ 撤销一步</button></div>
+    <div id="missingHint" class="missing-hint"></div>
     <details open><summary><span>文本信息</span><small>内容来源与页面位置</small></summary><div class="details-body">${singleField('内容部类',l.内容部类)}${singleField('页面位置',l.页面位置)}${textField('疑难说明', l.疑难说明, '无法判断或需要说明的问题')}</div></details>
-    <details><summary><span>物质形态</span><small>制作、时代、地域、版式</small></summary><div class="details-body">${singleField('制作方式',l.制作方式)}${singleField('时代',l.时代)}${singleField('刻印地域',l.刻印地域)}${singleField('刻印单位',l.刻印单位)}${linePatternField(l.行款)}${singleField('栏数',l.栏数)}${singleField('界行',l.界行)}${singleField('版框',l.版框)}${multiField('鱼尾',l.鱼尾)}${singleField('版心',l.版心)}${singleField('象鼻',l.象鼻)}${singleField('书耳',l.书耳)}${singleField('字体',l.字体)}${singleField('图文版面',l.图文版面)}</div></details>
-    <details><summary><span>阅读与流通</span><small>批注圈点、印章、磨损、数字化</small></summary><div class="details-body">${multiField('阅读痕迹', l.阅读痕迹)}${singleField('印章',l.印章)}${multiField('磨损情况', l.磨损情况)}${multiField('数字化干扰', l.数字化干扰)}</div></details>`
-  bindEditor(); updateSaveState()
+    <details open><summary><span>物质形态</span><small>制作、时代、地域、版式</small></summary><div class="details-body">${singleField('制作方式',l.制作方式)}${singleField('时代',l.时代)}${singleField('刻印地域',l.刻印地域)}${singleField('刻印单位',l.刻印单位)}${linePatternField(l.行款)}${singleField('栏数',l.栏数)}${singleField('界行',l.界行)}${singleField('版框',l.版框)}${multiField('鱼尾',l.鱼尾)}${singleField('版心',l.版心)}${singleField('象鼻',l.象鼻)}${singleField('书耳',l.书耳)}${singleField('字体',l.字体)}${singleField('图文版面',l.图文版面)}</div></details>
+    <details open><summary><span>阅读与流通</span><small>批注圈点、印章、磨损、数字化</small></summary><div class="details-body">${multiField('阅读痕迹', l.阅读痕迹)}${singleField('印章',l.印章)}${multiField('磨损情况', l.磨损情况)}${multiField('数字化干扰', l.数字化干扰)}</div></details>`
+  bindEditor(); updateSaveState(); updateMissingHint()
 }
 
 const fieldTitles: Record<string,string> = { 内容部类:'内容来源（经史子集）', 页面位置:'位置来源', 制作方式:'制作方式与技术类型', 时代:'刻印时代', 图文版面:'图文', 阅读痕迹:'批注／圈点' }
-const CUSTOM_PREFIX='主观题：'
+const CUSTOM_PREFIX='其他：'
 function singleField(name: string, value: Value | undefined) {
-  const options=selectOptions[name],raw=String(value??''),isCustom=raw==='主观题'||(!!raw&&!options.includes(raw)),custom=isCustom?raw.replace(/^主观题：/,'').replace(/^主观题$/,''):''
-  return `<fieldset class="chip-field single-chip-field"><legend>${fieldTitles[name]||name}</legend><div>${options.map(x=>{const customOption=x==='主观题',selected=customOption?isCustom:x===raw;return `<label class="chip ${selected?'selected':''}"><input type="radio" name="field-${name}" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${isCustom?'show':''}" data-custom-box="${name}"><input data-custom-single="${name}" value="${esc(custom)}" placeholder="请填写具体内容"></div></fieldset>`
+  const options=selectOptions[name],raw=String(value??''),isCustom=raw==='其他'||raw.startsWith('主观题：')||(!!raw&&!options.includes(raw)),custom=isCustom?raw.replace(/^(其他|主观题)：/,'').replace(/^(其他|主观题)$/,''):''
+  return `<fieldset class="chip-field single-chip-field"><legend>${fieldTitles[name]||name}</legend><div>${options.map(x=>{const customOption=x==='其他',selected=customOption?isCustom:x===raw;return `<label class="chip ${selected?'selected':''}"><input type="radio" name="field-${name}" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${isCustom?'show':''}" data-custom-box="${name}"><input data-custom-single="${name}" value="${esc(custom)}" placeholder="请填写其他内容"></div></fieldset>`
 }
 function multiField(name: string, value: Value | undefined) {
-  const options=multiOptions[name],values=Array.isArray(value)?value:[],customValue=values.find(x=>x==='主观题'||x.startsWith(CUSTOM_PREFIX)||!options.includes(x))||'',custom=customValue.replace(/^主观题：/,'').replace(/^主观题$/,'');const set=new Set(values)
-  return `<fieldset class="chip-field"><legend>${fieldTitles[name]||name}</legend><div>${options.map(x=>{const customOption=x==='主观题',selected=customOption?!!customValue:set.has(x);return `<label class="chip ${selected?'selected':''}"><input type="checkbox" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${customValue?'show':''}" data-custom-box="${name}"><input data-custom-multi="${name}" value="${esc(custom)}" placeholder="请填写具体内容"></div></fieldset>`
+  const options=multiOptions[name],values=Array.isArray(value)?value:[],customValue=values.find(x=>x==='其他'||x.startsWith('其他：')||x.startsWith('主观题：')||!options.includes(x))||'',custom=customValue.replace(/^(其他|主观题)：/,'').replace(/^(其他|主观题)$/,'');const set=new Set(values)
+  return `<fieldset class="chip-field"><legend>${fieldTitles[name]||name}</legend><div>${options.map(x=>{const customOption=x==='其他',selected=customOption?!!customValue:set.has(x);return `<label class="chip ${selected?'selected':''}"><input type="checkbox" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${customValue?'show':''}" data-custom-box="${name}"><input data-custom-multi="${name}" value="${esc(custom)}" placeholder="请填写其他内容"></div></fieldset>`
 }
 function textField(name: string, value: Value | undefined, placeholder='') { return `<label class="control wide"><span>${name}</span><input data-field="${name}" value="${esc(value)}" placeholder="${esc(placeholder)}"></label>` }
 function linePatternField(value: Value | undefined) { return `<div class="line-pattern"><label class="control wide"><span>行款 <small>根据校订文本自动估算，可手动修改</small></span><input data-field="行款" value="${esc(value)}" placeholder="如：半页10行，行19字"></label><button type="button" id="estimatePattern">重新估算</button></div>` }
 
 function bindEditor() {
-  const body=document.querySelector('#editorBody')!
-  body.querySelector('#correctedText')!.addEventListener('input',e=>{draft!.corrected_text=(e.target as HTMLTextAreaElement).value; markDirty()})
+  const body=document.querySelector('#editorBody')!,textarea=body.querySelector<HTMLTextAreaElement>('#correctedText')!
+  textarea.addEventListener('beforeinput',()=>{undoText=textarea.value;updateUndoButton()})
+  textarea.addEventListener('input',()=>{draft!.corrected_text=textarea.value;markDirty()})
   body.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-field]').forEach(el=>el.addEventListener('input',()=>{
     const name=el.dataset.field!
     if(el.type==='checkbox') updateMultiValue(name,body)
@@ -243,6 +246,7 @@ function bindEditor() {
   body.querySelectorAll<HTMLInputElement>('[data-custom-single]').forEach(el=>el.addEventListener('input',()=>{draft!.labels[el.dataset.customSingle!]=CUSTOM_PREFIX+el.value;markDirty()}))
   body.querySelectorAll<HTMLInputElement>('[data-custom-multi]').forEach(el=>el.addEventListener('input',()=>{updateMultiValue(el.dataset.customMulti!,body);markDirty()}))
   body.querySelectorAll<HTMLButtonElement>('[data-symbol]').forEach(b=>b.addEventListener('click',()=>insertSymbol(b.dataset.symbol!)))
+  body.querySelector('#undoText')?.addEventListener('click',undoLastText)
   body.querySelector('#estimatePattern')?.addEventListener('click', estimateLinePattern)
 }
 
@@ -264,11 +268,19 @@ function estimateLinePattern(){
   draft!.labels.行款=result;const input=document.querySelector<HTMLInputElement>('input[data-field="行款"]');if(input)input.value=result;markDirty();toast('已根据当前校订文本估算行款')
 }
 
-function insertSymbol(symbol:string){const t=document.querySelector<HTMLTextAreaElement>('#correctedText')!,s=t.selectionStart,e=t.selectionEnd,selected=t.value.slice(s,e);let insert=symbol,caret=s+symbol.length;if(symbol==='【】'){insert=`【${selected}】`;caret=s+1+selected.length}else if(symbol==='<>'){insert=`<${selected}>`;caret=s+1+selected.length}t.setRangeText(insert,s,e,'end');t.focus();t.setSelectionRange(caret,caret);draft!.corrected_text=t.value;markDirty()}
-function markDirty(){dirty=true;updateSaveState()}
+function insertSymbol(symbol:string){
+  const t=document.querySelector<HTMLTextAreaElement>('#correctedText')!,s=t.selectionStart,e=t.selectionEnd,selected=t.value.slice(s,e);undoText=t.value;let insert=symbol,caret=s+symbol.length
+  if(symbol==='【】'){insert=`【${selected}】`;caret=s+1+selected.length}
+  else if(symbol==='<>'){insert=`<${selected}>`;caret=s+1+selected.length}
+  else if((symbol==='。'||symbol==='、')&&selected){insert=Array.from(selected).map(ch=>/\s/.test(ch)?ch:ch+symbol).join('');caret=s+insert.length}
+  t.setRangeText(insert,s,e,'end');t.focus();t.setSelectionRange(caret,caret);draft!.corrected_text=t.value;updateUndoButton();markDirty()
+}
+function undoLastText(){const t=document.querySelector<HTMLTextAreaElement>('#correctedText');if(!t||undoText===null)return;t.value=undoText;undoText=null;draft!.corrected_text=t.value;t.focus();updateUndoButton();markDirty()}
+function updateUndoButton(){const b=document.querySelector<HTMLButtonElement>('#undoText');if(b)b.disabled=undoText===null}
+function markDirty(){dirty=true;updateSaveState();updateMissingHint()}
 function updateSaveState(message?:string){const x=document.querySelector('#saveState');if(!x)return;x.textContent=message??(dirty?'有未保存修改':'已同步');x.className=dirty?'unsaved':''}
 
-async function save(goNext:boolean){if(!draft||busy)return;busy=true;toggleSave(true);try{
+async function save(goNext:boolean){if(!draft||busy)return;if(goNext&&!confirmMissing('完成并进入下一张'))return;busy=true;toggleSave(true);try{
   const nextStatus=goNext?'已完成':draft.status==='待标注'?'标注中':draft.status
   const {data,error}=await supabase.rpc('save_workspace_task',{p_token:userToken,p_sample_id:draft.sample_id,p_revision:original!.revision,p_corrected_text:draft.corrected_text,p_status:nextStatus,p_labels:draft.labels,p_reviewer_note:draft.reviewer_note})
   if(error)throw error;const saved=(Array.isArray(data)?data[0]:data) as Task;if(!saved)throw new Error('保存失败')
@@ -276,7 +288,11 @@ async function save(goNext:boolean){if(!draft||busy)return;busy=true;toggleSave(
   if(goNext&&currentIndex<filtered.length-1){currentIndex++;loadCurrent()}
 }catch(e){updateSaveState('保存失败');toast((e as Error).message,true)}finally{busy=false;toggleSave(false)}}
 function toggleSave(v:boolean){document.querySelectorAll<HTMLButtonElement>('#saveBtn,#saveNextBtn').forEach(x=>x.disabled=v)}
-function navigate(delta:number){if(dirty&&!confirm('当前修改尚未保存，确定离开吗？'))return;const n=currentIndex+delta;if(n<0||n>=filtered.length)return toast(n<0?'已经是第一条':'已经是最后一条');currentIndex=n;loadCurrent()}
+const annotationFields=['内容部类','页面位置','制作方式','时代','刻印地域','刻印单位','行款','栏数','界行','版框','鱼尾','版心','象鼻','书耳','字体','图文版面','阅读痕迹','印章','磨损情况','数字化干扰']
+function missingAnnotations(){if(!draft)return[];return annotationFields.filter(name=>{const value=draft!.labels[name];return value==null||value===''||(Array.isArray(value)&&value.length===0)||value===CUSTOM_PREFIX||(Array.isArray(value)&&value.some(x=>x===CUSTOM_PREFIX))}).map(name=>fieldTitles[name]||name)}
+function updateMissingHint(){const el=document.querySelector('#missingHint');if(!el)return;const missing=missingAnnotations();el.textContent=missing.length?`尚有 ${missing.length} 项未标注：${missing.slice(0,5).join('、')}${missing.length>5?'…':''}`:'本条维度已标注完整';el.className=`missing-hint ${missing.length?'':'complete'}`}
+function confirmMissing(action:string){const missing=missingAnnotations();return !missing.length||confirm(`还有 ${missing.length} 项未标注：\n${missing.join('、')}\n\n仍要${action}吗？`)}
+function navigate(delta:number){const n=currentIndex+delta;if(n<0||n>=filtered.length)return toast(n<0?'已经是第一条':'已经是最后一条');const notices=[];if(dirty)notices.push('当前修改尚未保存');const missing=delta>0?missingAnnotations():[];if(missing.length)notices.push(`尚有 ${missing.length} 项未标注：${missing.join('、')}`);if(notices.length&&!confirm(`${notices.join('\n\n')}\n\n仍要切换吗？`))return;currentIndex=n;loadCurrent()}
 function jumpToSample(){const n=Number((document.querySelector('#sampleSearch')as HTMLInputElement).value),i=filtered.findIndex(x=>x.sample_id===n);if(i<0)return toast('当前筛选范围内未找到该编号',true);if(dirty&&!confirm('当前修改尚未保存，确定跳转吗？'))return;currentIndex=i;loadCurrent()}
 function updateProgress(){document.querySelector('#progressText')!.textContent=filtered.length?`${currentIndex+1} / ${filtered.length} · 总计 ${tasks.length} 条`:`0 / 0 · 总计 ${tasks.length} 条`;const p=document.querySelector<HTMLButtonElement>('#prevBtn'),n=document.querySelector<HTMLButtonElement>('#nextBtn');if(p)p.disabled=currentIndex<=0;if(n)n.disabled=currentIndex>=filtered.length-1}
 function fitImage(){

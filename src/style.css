@@ -51,6 +51,8 @@ h1 { margin: 2px 0 0; font: 700 26px/1.2 "Noto Serif SC", serif; color: #491313;
 .symbolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 9px 0 6px; }
 .symbolbar > span { color: #807d76; font-size: 11px; margin-right: 3px; }
 .symbolbar button { padding: 5px 8px; border: 1px solid #d6d2ca; background: #fdfcf9; font: 12px/1.2 ui-monospace,"PingFang SC",monospace; }
+.symbolbar .undo-button { margin-left: auto; font-family: inherit; color: #625f59; }.symbolbar .undo-button:disabled { color: #aaa69f; }
+.missing-hint { margin: 0 0 12px; padding: 7px 9px; border-left: 2px solid #b67a36; color: #7c5a2f; background: #faf4e8; font-size: 11px; line-height: 1.5; }.missing-hint.complete { border-color: #4d8a67; color: #3e7055; background: #edf6f0; }
 .rule-hint { margin: 0 0 16px; color: #99958d; font-size: 11px; }
 .core-fields { margin-top: 5px; padding: 14px 15px 2px; border: 1px solid #ddd9d1; background: #fdfcf9; }
 .section-title { margin-bottom: 12px; color: #3f3d38; font-size: 12px; font-weight: 700; letter-spacing: .04em; }
