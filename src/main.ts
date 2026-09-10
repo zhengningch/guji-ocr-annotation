@@ -201,9 +201,9 @@ function renderEditor() {
       ['□','□ 残损字'],['、','、 删除符'],['=','= 重文号'],['-','- 重文号'],['~','~ 交换符'],['<note></note>','标注区'],['<ignore></ignore>','非转录区']
     ].map(([value,label],i) => `<button data-symbol="${esc(value)}" title="快捷键 Alt+${i+1}">${esc(label)}</button>`).join('')}</div>
     <p class="rule-hint">逐列换行 · 不加现代标点 · 保留原字形 · 无法辨认用 □</p>
-    <div class="essential-grid">${selectField('任务状态', draft!.status)}${selectField('页面位置', l.页面位置)}${selectField('图文版面', l.图文版面)}${selectField('阅读顺序', l.阅读顺序)}</div>
-    ${multiField('特殊文字', l.特殊文字)}${multiField('阅读痕迹', l.阅读痕迹)}${multiField('磨损情况', l.磨损情况)}${multiField('数字化干扰', l.数字化干扰)}${textField('疑难说明', l.疑难说明, '无法判断或规范未覆盖的问题')}
-    <details><summary><span>更多版本属性</span><small>时代、地域、版式等低频字段</small></summary><div class="details-body"><div class="essential-grid">${selectField('内容部类',l.内容部类)}${selectField('制作方式',l.制作方式)}${selectField('时代',l.时代)}${selectField('国家地区',l.国家地区)}${selectField('刻印单位',l.刻印单位)}${selectField('界行',l.界行)}${selectField('版框',l.版框)}${selectField('版心',l.版心)}${selectField('书耳',l.书耳)}${selectField('印章',l.印章)}</div>${multiField('鱼尾',l.鱼尾)}${multiField('字体',l.字体)}<div class="essential-grid">${textField('刻印地域',l.刻印地域)}${textField('行款',l.行款)}${textField('象鼻',l.象鼻)}</div></div></details>
+    <section class="core-fields"><div class="section-title">任务与阅读</div><div class="essential-grid">${selectField('任务状态', draft!.status)}${selectField('页面位置', l.页面位置)}${selectField('阅读顺序', l.阅读顺序)}${selectField('图文版面', l.图文版面)}</div>${textField('疑难说明', l.疑难说明, '无法判断、残损或规范未覆盖的问题')}</section>
+    <details><summary><span>页面状况与特殊现象</span><small>特殊文字、圈点、磨损、数字化干扰</small></summary><div class="details-body">${multiField('特殊文字', l.特殊文字)}${multiField('阅读痕迹', l.阅读痕迹)}${multiField('磨损情况', l.磨损情况)}${multiField('数字化干扰', l.数字化干扰)}${selectField('印章',l.印章)}</div></details>
+    <details><summary><span>版本与版式信息</span><small>经史子集、时代、地域、行款和版式</small></summary><div class="details-body"><div class="essential-grid">${selectField('内容部类',l.内容部类)}${selectField('制作方式',l.制作方式)}${selectField('时代',l.时代)}${selectField('国家地区',l.国家地区)}${selectField('刻印单位',l.刻印单位)}${selectField('界行',l.界行)}${selectField('版框',l.版框)}${selectField('版心',l.版心)}${selectField('书耳',l.书耳)}</div>${linePatternField(l.行款)}${multiField('鱼尾',l.鱼尾)}${multiField('字体',l.字体)}<div class="essential-grid">${textField('刻印地域',l.刻印地域)}${textField('象鼻',l.象鼻)}</div></div></details>
     <details><summary><span>OCR 初稿与复核</span><small>需要对照时展开</small></summary><div class="details-body"><label class="field-label">OCR初稿</label><pre class="readonly-text">${esc(draft!.ocr_initial)}</pre>${textField('复核意见',draft!.reviewer_note)}</div></details>`
   bindEditor(); updateSaveState()
 }
@@ -211,6 +211,7 @@ function renderEditor() {
 function selectField(name: string, value: Value | undefined) { const v=String(value??''); return `<label class="control"><span>${name}</span><select data-field="${name}"><option value="">未选择</option>${selectOptions[name].map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join('')}</select></label>` }
 function multiField(name: string, value: Value | undefined) { const set=new Set(Array.isArray(value)?value:[]); return `<fieldset class="chip-field"><legend>${name}</legend><div>${multiOptions[name].map(x=>`<label class="chip ${set.has(x)?'selected':''}"><input type="checkbox" data-field="${name}" value="${x}" ${set.has(x)?'checked':''}><span>${x}</span></label>`).join('')}</div></fieldset>` }
 function textField(name: string, value: Value | undefined, placeholder='') { return `<label class="control wide"><span>${name}</span><input data-field="${name}" value="${esc(value)}" placeholder="${esc(placeholder)}"></label>` }
+function linePatternField(value: Value | undefined) { return `<div class="line-pattern"><label class="control wide"><span>行款 <small>根据校订文本自动估算，可手动修改</small></span><input data-field="行款" value="${esc(value)}" placeholder="如：半页10行，行19字"></label><button type="button" id="estimatePattern">重新估算</button></div>` }
 
 function bindEditor() {
   const body=document.querySelector('#editorBody')!
@@ -224,6 +225,17 @@ function bindEditor() {
     markDirty()
   }))
   body.querySelectorAll<HTMLButtonElement>('[data-symbol]').forEach(b=>b.addEventListener('click',()=>insertSymbol(b.dataset.symbol!)))
+  body.querySelector('#estimatePattern')?.addEventListener('click', estimateLinePattern)
+}
+
+function estimateLinePattern(){
+  const textarea=document.querySelector<HTMLTextAreaElement>('#correctedText'),image=document.querySelector<HTMLImageElement>('#mainImage');if(!textarea)return
+  const lines=textarea.value.split(/\r?\n/).map(x=>x.replace(/<[^>]+>/g,'').trim()).filter(Boolean),lengths=lines.map(x=>Array.from(x).length).filter(x=>x>0)
+  if(!lengths.length)return toast('当前文本没有可估算的内容',true)
+  const counts=new Map<number,number>();lengths.filter(x=>x>=3).forEach(x=>counts.set(x,(counts.get(x)||0)+1));const typical=[...counts].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0]?.[0]||Math.round(lengths.reduce((a,b)=>a+b,0)/lengths.length)
+  const wide=!!image&&image.naturalWidth/image.naturalHeight>=1.35,rowCount=wide?Math.round(lines.length/2):lines.length
+  const result=`OCR推算：${wide?'半页约':'半页'}${rowCount}行，主体行约${typical}字`
+  draft!.labels.行款=result;const input=document.querySelector<HTMLInputElement>('input[data-field="行款"]');if(input)input.value=result;markDirty();toast('已根据当前校订文本估算行款')
 }
 
 function insertSymbol(symbol:string){const t=document.querySelector<HTMLTextAreaElement>('#correctedText')!,s=t.selectionStart,e=t.selectionEnd,selected=t.value.slice(s,e);let insert=symbol,caret=s+symbol.length;if(symbol==='【】'){insert=`【${selected}】`;caret=s+1+selected.length}else if(symbol.includes('</')){const tag=symbol.slice(1,symbol.indexOf('>'));insert=`<${tag}>${selected}</${tag}>`;caret=s+tag.length+2+selected.length}t.setRangeText(insert,s,e,'end');t.focus();t.setSelectionRange(caret,caret);draft!.corrected_text=t.value;markDirty()}
