@@ -67,6 +67,7 @@ h1 { margin: 2px 0 0; font: 700 26px/1.2 "Noto Serif SC", serif; color: #491313;
 .chip input { position: absolute; opacity: 0; pointer-events: none; }
 .chip span { display: inline-block; padding: 5px 9px; border: 1px solid #d7d3cb; border-radius: 3px; background: #fff; color: #67645f; font-size: 12px; cursor: pointer; }
 .chip.selected span { border-color: #8f4a43; color: #722d28; background: #f7ebe7; font-weight: 600; }
+.custom-answer { display: none; width: 100%; margin-top: 8px; }.custom-answer.show { display: block; }.custom-answer input { width: 100%; height: 36px; padding: 0 10px; border: 1px solid #b9b3aa; border-radius: 3px; background: #fffefa; outline: none; }.custom-answer input:focus { border-color: #8f4a43; box-shadow: 0 0 0 2px #8f4a4310; }
 details { margin: 16px 0 0; border: 1px solid #ddd9d1; border-radius: 3px; background: #fdfcf9; }
 summary { padding: 13px 15px; cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; }
 summary::after { content: "⌄"; color: #999; font-size: 16px; margin-left: auto; }
