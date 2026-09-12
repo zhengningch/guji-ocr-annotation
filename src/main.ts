@@ -302,7 +302,7 @@ function updateUndoButton(){const b=document.querySelector<HTMLButtonElement>('#
 function markDirty(){dirty=true;updateSaveState();updateMissingHint()}
 function updateSaveState(message?:string){const x=document.querySelector('#saveState');if(!x)return;x.textContent=message??(dirty?'有未保存修改':'已同步');x.className=dirty?'unsaved':''}
 
-async function save(goNext:boolean){if(!draft||busy)return;if(goNext&&!confirmMissing('完成并进入下一张'))return;busy=true;toggleSave(true);updateSaveState('保存中…');showSaveSignal('saving','保存中…');try{
+async function save(goNext:boolean){if(!draft||busy)return;const missing=missingAnnotations();if(missing.includes('链接位置')){toast('请先填写必填项：链接位置',true);return}if(goNext&&!confirmMissing('完成并进入下一张'))return;busy=true;toggleSave(true);updateSaveState('保存中…');showSaveSignal('saving','保存中…');try{
   const nextStatus=goNext?'已完成':draft.status==='待标注'?'标注中':draft.status
   const {data,error}=await supabase.rpc('save_workspace_task',{p_token:userToken,p_sample_id:draft.sample_id,p_revision:original!.revision,p_corrected_text:draft.corrected_text,p_status:nextStatus,p_labels:draft.labels,p_reviewer_note:draft.reviewer_note})
   if(error)throw error;const saved=(Array.isArray(data)?data[0]:data) as Task;if(!saved)throw new Error('保存失败')
