@@ -205,6 +205,7 @@ function loadCurrent() {
     draft.labels.栏数 ||= '一'
     draft.labels.字体 = Array.isArray(draft.labels.字体) ? (draft.labels.字体[0] || '楷书') : (draft.labels.字体 || '楷书')
     if (draft.labels.图文版面 === '纯文字') draft.labels.图文版面 = '无'
+    if (draft.status === '已完成' && missingAnnotations().length) draft.status = '标注中'
     renderImage(); renderEditor(); updateProgress()
   } catch (error) {
     console.error('加载标注页失败：', error)
@@ -341,8 +342,8 @@ function updateUndoButton(){const b=document.querySelector<HTMLButtonElement>('#
 function markDirty(){dirty=true;updateSaveState();updateMissingHint()}
 function updateSaveState(message?:string){const x=document.querySelector('#saveState');if(!x)return;x.textContent=message??(dirty?'有未保存修改':'已同步');x.className=dirty?'unsaved':''}
 
-async function save(goNext:boolean){if(!draft||busy)return;if(goNext&&!confirmMissing('完成并进入下一张'))return;busy=true;toggleSave(true);updateSaveState('保存中…');showSaveSignal('saving','保存中…');try{
-  const nextStatus=goNext?'已完成':draft.status==='待标注'?'标注中':draft.status
+async function save(goNext:boolean){if(!draft||busy)return;const missing=missingAnnotations();if(goNext&&missing.length){toast(`尚有 ${missing.length} 项未标注，不能标记为已完成`,true);return}busy=true;toggleSave(true);updateSaveState('保存中…');showSaveSignal('saving','保存中…');try{
+  const nextStatus=goNext?'已完成':draft.status==='待标注'||missing.length?'标注中':draft.status
   const {data,error}=await supabase.rpc('save_workspace_task',{p_token:userToken,p_sample_id:draft.sample_id,p_revision:original!.revision,p_corrected_text:draft.corrected_text,p_status:nextStatus,p_labels:draft.labels,p_reviewer_note:draft.reviewer_note})
   if(error)throw error;const saved=(Array.isArray(data)?data[0]:data) as Task;if(!saved)throw new Error('保存失败')
   const pos=tasks.findIndex(x=>x.sample_id===draft!.sample_id);tasks[pos]=saved;const fpos=filtered.findIndex(x=>x.sample_id===draft!.sample_id);filtered[fpos]=saved;draft=clone(saved);original=clone(saved);dirty=false;updateSaveState('保存成功');showSaveSignal('saved','保存成功！');toast('标注已保存')
