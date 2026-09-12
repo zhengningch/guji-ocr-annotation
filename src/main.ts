@@ -287,7 +287,7 @@ function bindEditor() {
   body.addEventListener('pointerdown', event => { if ((event.target as HTMLElement).closest('.chip')) chipScrollTop = body.scrollTop })
   textarea.addEventListener('beforeinput',()=>{undoText=textarea.value;updateUndoButton()})
   textarea.addEventListener('input',()=>{draft!.corrected_text=textarea.value;markDirty()})
-  body.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-field]').forEach(el=>el.addEventListener(el.type==='checkbox'||el.type==='radio'?'change':'input',()=>{
+  body.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-field]').forEach(el=>el.addEventListener('input',()=>{
     const name=el.dataset.field!
     if(el.type==='checkbox') updateMultiValue(name,body)
     else if(el.type==='radio') {
