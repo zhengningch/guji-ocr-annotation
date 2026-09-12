@@ -4,6 +4,7 @@ import './style.css'
 
 type Value = string | string[]
 type Labels = Record<string, Value>
+type BertAlert = { offset: number; char: string; error_prob: number }
 type Task = {
   sample_id: number
   image_path: string
@@ -17,6 +18,7 @@ type Task = {
   annotator_id: string | null
   annotator_name: string
   reviewer_note: string
+  bert_alerts: BertAlert[] | null
   revision: number
   updated_at: string
 }
@@ -206,6 +208,7 @@ function renderEditor() {
     <div class="record-head"><div><span class="eyebrow">当前样本</span><h1>#${draft!.sample_id}</h1></div><div class="badges"><span>${esc(draft!.batch)}</span><span class="status-${statusClass(draft!.status)}">${esc(draft!.status)}</span></div></div>
     <div class="annotator-note">${draft!.annotator_name ? `标注人：${esc(draft!.annotator_name)}` : '首次保存时自动记录当前标注人'}</div>
     <label class="field-label" for="correctedText">校订文本 <em>主要填写区</em></label><textarea id="correctedText" class="main-text" spellcheck="false">${esc(draft!.corrected_text)}</textarea>
+    ${renderOcrPreview()}
     <div class="symbolbar"><span>校订符号</span>${[
       ['□','残损字'],['=','重文号'],['。','圈点。'],['、','圈点、'],['【】','小字【】'],['<>','批注<>']
     ].map(([value,label],i) => `<button data-symbol="${esc(value)}" title="快捷键 Alt+${i+1}">${esc(label)}</button>`).join('')}<button id="undoText" class="undo-button" disabled>↶ 撤销一步</button></div>
@@ -228,6 +231,18 @@ function multiField(name: string, value: Value | undefined) {
 }
 function textField(name: string, value: Value | undefined, placeholder='') { return `<label class="control wide"><span>${name}</span><input data-field="${name}" value="${esc(value)}" placeholder="${esc(placeholder)}"></label>` }
 function linePatternField(value: Value | undefined) { return `<div class="line-pattern"><label class="control wide"><span>行款 <small>根据校订文本自动估算，可手动修改</small></span><input data-field="行款" value="${esc(value)}" placeholder="如：半页10行，行19字"></label><button type="button" id="estimatePattern">重新估算</button></div>` }
+
+function renderOcrPreview() {
+  const text = draft!.ocr_initial || ''
+  const alerts = Array.isArray(draft!.bert_alerts) ? draft!.bert_alerts : []
+  if (!text) return ''
+  const byOffset = new Map(alerts.map(alert => [alert.offset, alert]))
+  const html = Array.from(text).map((char, offset) => {
+    const alert = byOffset.get(offset)
+    return alert ? `<mark title="BERT 疑似错误，概率 ${(alert.error_prob * 100).toFixed(1)}%">${esc(char)}</mark>` : esc(char)
+  }).join('')
+  return `<section class="ocr-preview"><div class="ocr-preview-head"><span>OCR 初始识别</span><small>${alerts.length ? `BERT 标记 ${alerts.length} 处（仅供复核）` : 'BERT 未标记疑似错误'}</small></div><div class="ocr-preview-text">${html}</div></section>`
+}
 
 function bindEditor() {
   const body=document.querySelector('#editorBody')!,textarea=body.querySelector<HTMLTextAreaElement>('#correctedText')!

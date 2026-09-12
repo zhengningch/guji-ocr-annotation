@@ -21,6 +21,7 @@ create table if not exists public.tasks (
   annotator_id uuid references auth.users(id) on delete set null,
   annotator_name text not null default '',
   reviewer_note text not null default '',
+  bert_alerts jsonb not null default '[]'::jsonb,
   revision integer not null default 0,
   updated_at timestamptz not null default now()
 );
@@ -28,6 +29,8 @@ create table if not exists public.tasks (
 create index if not exists tasks_status_idx on public.tasks(status);
 create index if not exists tasks_batch_idx on public.tasks(batch);
 create index if not exists tasks_annotator_idx on public.tasks(annotator_id);
+
+alter table public.tasks add column if not exists bert_alerts jsonb not null default '[]'::jsonb;
 
 alter table public.profiles enable row level security;
 alter table public.tasks enable row level security;
