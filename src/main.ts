@@ -274,7 +274,7 @@ function renderCorrectedText() {
     return alert && alert.char === char ? `<mark title="BERT 疑似错误，概率 ${(probability * 100).toFixed(1)}%">${esc(char)}</mark>` : esc(char)
   }).join('')
 }
-function editorText() { return document.querySelector<HTMLElement>('#correctedText')?.innerText.replace(/\n$/, '') || '' }
+function editorText() { return document.querySelector<HTMLElement>('#correctedText')?.textContent?.replace(/\n$/, '') || '' }
 function selectionBertMark() { const node=window.getSelection()?.anchorNode;return node instanceof HTMLElement?(node.closest('mark') as HTMLElement|null):node?.parentElement?.closest('mark') as HTMLElement|null }
 function clearBertMark(mark: HTMLElement | null) { if(!mark)return;mark.replaceWith(document.createTextNode(mark.textContent || ''));const hint=document.querySelector('#bertHint');if(hint)hint.textContent='已修改疑似错误字，该字标记已取消' }
 
@@ -323,10 +323,11 @@ function updateMultiValue(name:string,body:Element){
 
 function estimateLinePattern(){
   const textarea=document.querySelector<HTMLElement>('#correctedText'),image=document.querySelector<HTMLImageElement>('#mainImage');if(!textarea)return
-  const lines=editorText().split(/\r?\n/).map(x=>x.replace(/<[^>]+>/g,'').trim()).filter(Boolean),lengths=lines.map(x=>Array.from(x).length).filter(x=>x>0)
+  const lines=editorText().split(/\r?\n/).map(x=>x.replace(/<[^>]+>/g,'').trim()).filter(x=>x&&!/^【[^】]+】$/.test(x))
+  const lengths=lines.map(x=>Array.from(x.replace(/[○◎●◉◌◦。，、；：！？「」『』（）()\s]/g,'')).length).filter(x=>x>=3)
   if(!lengths.length)return toast('当前文本没有可估算的内容',true)
-  const counts=new Map<number,number>();lengths.filter(x=>x>=3).forEach(x=>counts.set(x,(counts.get(x)||0)+1));const typical=[...counts].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0]?.[0]||Math.round(lengths.reduce((a,b)=>a+b,0)/lengths.length)
-  const mainLineCount=lengths.filter(x=>x>=typical*.6).length
+  const sorted=[...lengths].sort((a,b)=>a-b),typical=sorted[Math.floor(sorted.length/2)]
+  const mainLineCount=lengths.filter(x=>x>=typical*.6&&x<=typical*1.5).length
   const wide=!!image&&image.naturalWidth/image.naturalHeight>=1.35,rowCount=Math.max(1,wide?Math.round(mainLineCount/2):mainLineCount)
   const result=`半页${rowCount}行，行${typical}字`
   draft!.labels.行款=result;const input=document.querySelector<HTMLInputElement>('input[data-field="行款"]');if(input)input.value=result;markDirty();toast('已根据当前校订文本估算行款')
