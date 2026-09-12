@@ -68,6 +68,7 @@ let panY = 0
 let dashboardMode = false
 let undoText: string | null = null
 let saveSignalTimer: number | undefined
+let autoSaveTimer: number | undefined
 
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 const basePath = import.meta.env.BASE_URL
@@ -196,6 +197,7 @@ function applyFilters() {
 }
 
 function loadCurrent() {
+  window.clearTimeout(autoSaveTimer)
   if (!current()) {
     document.querySelector('#editorBody')!.innerHTML = '<div class="empty"><b>没有符合条件的任务</b><span>请调整筛选条件</span></div>'; document.querySelector('#imageStage')!.innerHTML = '<div class="empty light">暂无图片</div>'; updateProgress(); return
   }
@@ -342,7 +344,11 @@ function insertSymbol(symbol:string){
 }
 function undoLastText(){const t=document.querySelector<HTMLElement>('#correctedText');if(!t||undoText===null)return;t.textContent=undoText;undoText=null;draft!.corrected_text=editorText();t.focus();updateUndoButton();markDirty()}
 function updateUndoButton(){const b=document.querySelector<HTMLButtonElement>('#undoText');if(b)b.disabled=undoText===null}
-function markDirty(){dirty=true;updateSaveState();updateMissingHint()}
+function markDirty(){dirty=true;updateSaveState();updateMissingHint();scheduleAutoSave()}
+function scheduleAutoSave(){
+  window.clearTimeout(autoSaveTimer)
+  autoSaveTimer=window.setTimeout(()=>{if(dirty&&!busy)save(false)},1500)
+}
 function updateSaveState(message?:string){const x=document.querySelector('#saveState');if(!x)return;x.textContent=message??(dirty?'有未保存修改':'已同步');x.className=dirty?'unsaved':''}
 
 async function save(goNext:boolean){if(!draft||busy)return;const missing=missingAnnotations();if(goNext&&missing.length){toast(`尚有 ${missing.length} 项未标注，不能标记为已完成`,true);return}busy=true;toggleSave(true);updateSaveState('保存中…');showSaveSignal('saving','保存中…');try{
