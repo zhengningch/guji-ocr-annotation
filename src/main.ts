@@ -69,6 +69,8 @@ let dashboardMode = false
 let undoText: string | null = null
 let saveSignalTimer: number | undefined
 let autoSaveTimer: number | undefined
+let presenceTimer: number | undefined
+let participants: { sample_id: number; nickname: string }[] = []
 
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 const basePath = import.meta.env.BASE_URL
@@ -114,7 +116,7 @@ function renderAuth(message = '') {
 }
 
 function setAuthBusy(value: boolean) { document.querySelectorAll<HTMLButtonElement>('.auth-card button').forEach(x => x.disabled = value) }
-function logout() { userToken = ''; displayName = ''; localStorage.removeItem('guji_user_token'); localStorage.removeItem('guji_nickname'); renderAuth() }
+function logout() { window.clearInterval(presenceTimer);userToken = ''; displayName = ''; localStorage.removeItem('guji_user_token'); localStorage.removeItem('guji_nickname'); renderAuth() }
 
 async function startApp() {
   renderLoading()
@@ -123,10 +125,13 @@ async function startApp() {
   tasks = ((data ?? []) as Task[]).map(normalizeTask)
   filtered = [...tasks]
   renderShell()
+  startPresence()
   loadCurrent()
 }
 
 function renderLoading() { app.innerHTML = '<div class="page-loading"><div class="auth-logo">古</div><span>正在连接标注数据库…</span></div>' }
+async function refreshPresence(){if(!userToken)return;const {error}=await supabase.rpc('record_workspace_presence',{p_token:userToken});if(error)return;const [{data:online},{data:members}]=await Promise.all([supabase.rpc('get_workspace_presence',{p_token:userToken}),supabase.rpc('get_task_participants',{p_token:userToken})]);if(Array.isArray(members))participants=members as typeof participants;const el=document.querySelector('#onlineUsers');if(el&&Array.isArray(online))el.textContent=`在线 ${online.length}：${online.map((x:{nickname:string})=>x.nickname).join('、')||'—'}`}
+function startPresence(){window.clearInterval(presenceTimer);refreshPresence();presenceTimer=window.setInterval(refreshPresence,30000)}
 function renderSetupError(message: string) {
   app.innerHTML = `<div class="page-loading error-box"><div class="auth-logo">古</div><b>数据库尚未初始化</b><span>${esc(message)}</span><small>请先在 Supabase SQL Editor 中执行项目的初始化 SQL，并导入 tasks.csv。</small><button id="logout" class="secondary">退出登录</button></div>`
   document.querySelector('#logout')!.addEventListener('click', logout)
@@ -138,7 +143,7 @@ function renderShell() {
     <div class="brand"><span class="brand-mark">古</span><div><strong>古籍 OCR 标注</strong><small id="progressText"></small></div></div>
     <div class="view-tabs"><button id="workspaceTab" class="active">标注工作台</button><button id="dashboardTab">进度概览</button></div>
     <div class="filters" id="filters"><select id="batchFilter"><option value="">全部批次</option><option>一期</option><option>二期</option><option>三期</option></select><select id="statusFilter"><option value="">全部状态</option>${selectOptions.任务状态.map(x => `<option>${x}</option>`).join('')}</select><input id="sampleSearch" placeholder="跳转编号，如 428" inputmode="numeric"></div>
-    <div class="user-menu"><span>${esc(displayName)}</span><button id="logoutBtn" title="退出">退出</button></div>
+    <div class="user-menu"><span id="onlineUsers" class="online-users" title="当前在线用户">在线加载中…</span><span>${esc(displayName)}</span><button id="logoutBtn" title="退出">退出</button></div>
   </header>
   <div id="mainView"></div><div id="saveSignal" class="save-signal" aria-live="polite"><i></i><span></span></div><div id="toast" class="toast"></div><div id="lightbox" class="lightbox" hidden><button id="closeLightbox">×</button><img alt="古籍大图"></div>`
   document.querySelector('#logoutBtn')!.addEventListener('click', logout)
@@ -403,7 +408,7 @@ function renderDashboard(){
   const stages=['未完成','进行中','已完成','有疑问'],counts=Object.fromEntries(stages.map(s=>[s,tasks.filter(task=>taskStage(task)===s).length])),done=counts.已完成||0,rate=tasks.length?Math.round(done/tasks.length*100):0
   const questions=tasks.flatMap(task=>Object.entries(taskQuestions(task)).map(([field,note])=>({task,field,note})))
   const distributions=['内容部类','页面位置','制作方式','时代'].map(name=>({name,items:distribution(name)}))
-  const people: Record<string,number>={};tasks.forEach(task=>{if(task.annotator_name)people[task.annotator_name]=(people[task.annotator_name]||0)+1})
+  const people: Record<string,number>={};(participants.length?participants:tasks.filter(task=>task.annotator_name).map(task=>({sample_id:task.sample_id,nickname:task.annotator_name}))).forEach(member=>{people[member.nickname]=(people[member.nickname]||0)+1})
   document.querySelector('#mainView')!.innerHTML=`<main class="dashboard"><div class="dashboard-head"><div><span class="eyebrow">项目进度</span><h1>标注概览</h1></div><div class="completion"><b>${rate}%</b><span>完成率</span></div></div><section class="metric-grid">${[['样本总数',tasks.length],...stages.map(s=>[s,counts[s]||0])].map(([name,count])=>`<article><span>${name}</span><b>${count}</b></article>`).join('')}</section><section class="chart-grid"><article class="panel"><h2>任务状态</h2>${stages.map(s=>bar(s,counts[s]||0,tasks.length)).join('')}</article><article class="panel question-panel"><h2>有疑问（点击跳转）</h2>${questions.length?questions.map(({task,field,note})=>`<button data-question-jump="${task.sample_id}" data-question-field="${esc(field)}">#${task.sample_id} · ${esc(field)}${note?`：${esc(note)}`:''}</button>`).join(''):'<p class="muted">暂无疑问</p>'}</article><article class="panel"><h2>标注人工作量</h2>${Object.entries(people).length?Object.entries(people).sort((a,b)=>b[1]-a[1]).map(([name,count])=>bar(name,count,tasks.length)).join(''):'<p class="muted">尚无标注记录</p>'}</article></section><section class="distribution-grid">${distributions.map(({name,items})=>`<article class="panel"><h2>${esc(name)}分布</h2>${items.length?pie(items):'<p class="muted">尚无标注数据</p>'}</article>`).join('')}</section></main>`
   document.querySelector('#progressText')!.textContent=`总计 ${tasks.length} 条 · 已完成 ${done} 条`
   document.querySelectorAll<HTMLButtonElement>('[data-question-jump]').forEach(button=>button.addEventListener('click',()=>{const id=Number(button.dataset.questionJump),field=button.dataset.questionField!,index=filtered.findIndex(task=>task.sample_id===id);if(index<0)return;dashboardMode=false;currentIndex=index;document.querySelector('#workspaceTab')!.classList.add('active');document.querySelector('#dashboardTab')!.classList.remove('active');(document.querySelector('#filters') as HTMLElement).style.visibility='visible';renderWorkspace();loadCurrent();window.setTimeout(()=>document.querySelector(`[data-annotation-field="${field}"]`)?.scrollIntoView({block:'center'}),0)}))

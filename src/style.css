@@ -132,7 +132,7 @@ summary small { color: #a0a3a8; font-size: 11px; font-weight: 400; margin-left: 
 .view-tabs { display: flex; padding: 3px; border-radius: 8px; background: #f1f2f4; }
 .view-tabs button { padding: 6px 11px; background: transparent; font-size: 12px; }
 .view-tabs button.active { color: #7f1d1d; background: #fff; box-shadow: 0 1px 4px #0001; font-weight: 600; }
-.user-menu { display: flex; align-items: center; gap: 8px; color: #696d74; font-size: 12px; white-space: nowrap; }
+.user-menu { display: flex; align-items: center; gap: 8px; color: #696d74; font-size: 12px; white-space: nowrap; }.online-users { max-width: 180px; overflow: hidden; color: #28704d; text-overflow: ellipsis; }.online-users::before { content: '● '; color: #27a867; }
 .user-menu button { padding: 6px 8px; background: #f2f3f5; font-size: 11px; }
 .record-nav { position: absolute; z-index: 3; right: 20px; top: 15px; display: flex; gap: 7px; }
 .record-nav button { padding: 6px 9px; font-size: 11px; }
