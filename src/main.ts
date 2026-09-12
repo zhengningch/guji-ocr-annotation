@@ -236,8 +236,7 @@ function renderEditor() {
     <div class="record-head"><div><span class="eyebrow">当前样本</span><h1>#${draft!.sample_id}</h1></div><div class="badges"><span>${esc(draft!.batch)}</span><span class="status-${statusClass(draft!.status)}">${esc(draft!.status)}</span></div></div>
     <div class="annotator-note">${draft!.annotator_name ? `标注人：${esc(draft!.annotator_name)}` : '首次保存时自动记录当前标注人'}</div>
     ${textField('链接位置', l.链接位置, '请输入本条资料的来源链接（必填）')}
-    ${renderOcrPreview()}
-    <label class="field-label" for="correctedText">校订文本 <em>主要填写区</em></label><textarea id="correctedText" class="main-text" spellcheck="false">${esc(draft!.corrected_text)}</textarea>
+    <label class="field-label" for="correctedText">校订文本 <em>主要填写区</em><small id="bertHint">BERT 红色标记为疑似错误；开始修改后自动取消标记</small></label><div id="correctedText" class="main-text rich-text" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false">${renderCorrectedText()}</div>
     <div class="symbolbar"><span>校订符号</span>${[
       ['□','残损字'],['=','重文号'],['。','圈点。'],['、','圈点、'],['【】','小字【】'],['<>','批注<>']
     ].map(([value,label],i) => `<button data-symbol="${esc(value)}" title="快捷键 Alt+${i+1}">${esc(label)}</button>`).join('')}<button id="undoText" class="undo-button" disabled>↶ 撤销一步</button></div>
@@ -266,27 +265,24 @@ function multiField(name: string, value: unknown) {
 function textField(name: string, value: unknown, placeholder='') { return `<div class="control-question ${questionMap()[name]!==undefined?'has-question':''}" data-annotation-field="${name}"><label class="control wide"><span>${name}${questionToggle(name)}</span><input data-field="${name}" value="${esc(value)}" placeholder="${esc(placeholder)}"></label>${questionControl(name)}</div>` }
 function linePatternField(value: unknown) { return `<div class="line-pattern control-question ${questionMap().行款!==undefined?'has-question':''}" data-annotation-field="行款"><label class="control wide"><span>行款 <small>根据校订文本自动估算，可手动修改</small>${questionToggle('行款')}</span><input data-field="行款" value="${esc(value)}" placeholder="如：半页10行，行19字"></label><button type="button" id="estimatePattern">重新估算</button>${questionControl('行款')}</div>` }
 
-function renderOcrPreview() {
-  const text = typeof draft!.ocr_initial === 'string' ? draft!.ocr_initial : ''
-  if (!text) return ''
-  let rawAlerts: unknown = draft!.bert_alerts
-  if (typeof rawAlerts === 'string') { try { rawAlerts = JSON.parse(rawAlerts) } catch { rawAlerts = [] } }
-  const alerts = Array.isArray(rawAlerts) ? rawAlerts.filter((x): x is BertAlert => !!x && typeof x === 'object' && Number.isFinite(Number((x as BertAlert).offset))) : []
+function renderCorrectedText() {
+  const text = String(draft!.corrected_text || '')
+  const alerts = Array.isArray(draft!.bert_alerts) ? draft!.bert_alerts : []
   const byOffset = new Map(alerts.map(alert => [Number(alert.offset), alert]))
-  const html = Array.from(text).map((char, offset) => {
-    const alert = byOffset.get(offset)
-    const probability = alert ? Number(alert.error_prob) : 0
-    return alert ? `<mark title="BERT 疑似错误，概率 ${(probability * 100).toFixed(1)}%">${esc(char)}</mark>` : esc(char)
+  return Array.from(text).map((char, offset) => {
+    const alert = byOffset.get(offset), probability = alert ? Number(alert.error_prob) : 0
+    return alert && alert.char === char ? `<mark title="BERT 疑似错误，概率 ${(probability * 100).toFixed(1)}%">${esc(char)}</mark>` : esc(char)
   }).join('')
-  return `<section class="ocr-preview"><div class="ocr-preview-head"><span>OCR 初始识别</span><small>${alerts.length ? `BERT 标记 ${alerts.length} 处（仅供复核）` : 'BERT 未标记疑似错误'}</small></div><div class="ocr-preview-text">${html}</div></section>`
 }
+function editorText() { return document.querySelector<HTMLElement>('#correctedText')?.innerText.replace(/\n$/, '') || '' }
+function clearBertMarks() { document.querySelectorAll<HTMLElement>('#correctedText mark').forEach(mark => mark.replaceWith(document.createTextNode(mark.textContent || ''))); const hint=document.querySelector('#bertHint');if(hint)hint.textContent='已修改文本，BERT 标记已取消' }
 
 function bindEditor() {
-  const body=document.querySelector('#editorBody')!,textarea=body.querySelector<HTMLTextAreaElement>('#correctedText')!
+  const body=document.querySelector('#editorBody')!,textarea=body.querySelector<HTMLElement>('#correctedText')!
   let chipScrollTop: number | null = null
   body.addEventListener('pointerdown', event => { if ((event.target as HTMLElement).closest('.chip')) chipScrollTop = body.scrollTop })
-  textarea.addEventListener('beforeinput',()=>{undoText=textarea.value;updateUndoButton()})
-  textarea.addEventListener('input',()=>{draft!.corrected_text=textarea.value;markDirty()})
+  textarea.addEventListener('beforeinput',()=>{undoText=editorText();updateUndoButton()})
+  textarea.addEventListener('input',()=>{draft!.corrected_text=editorText();clearBertMarks();markDirty()})
   body.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-field]').forEach(el=>el.addEventListener('input',()=>{
     const name=el.dataset.field!
     if(el.type==='checkbox') updateMultiValue(name,body)
@@ -308,7 +304,6 @@ function bindEditor() {
     body.querySelector<HTMLElement>(`[data-question-box="${name}"]`)?.classList.toggle('show',!active);markDirty()
   }))
   body.querySelectorAll<HTMLInputElement>('[data-question-note]').forEach(input=>input.addEventListener('input',()=>{questionMap()[input.dataset.questionNote!]=input.value;markDirty()}))
-  body.querySelectorAll<HTMLElement>('.ocr-preview-text mark').forEach(mark => mark.addEventListener('click', () => { mark.classList.add('dismissed'); mark.removeAttribute('title') }))
   body.querySelector('#undoText')?.addEventListener('click',undoLastText)
   body.querySelector('#estimatePattern')?.addEventListener('click', estimateLinePattern)
 }
@@ -320,8 +315,8 @@ function updateMultiValue(name:string,body:Element){
 }
 
 function estimateLinePattern(){
-  const textarea=document.querySelector<HTMLTextAreaElement>('#correctedText'),image=document.querySelector<HTMLImageElement>('#mainImage');if(!textarea)return
-  const lines=textarea.value.split(/\r?\n/).map(x=>x.replace(/<[^>]+>/g,'').trim()).filter(Boolean),lengths=lines.map(x=>Array.from(x).length).filter(x=>x>0)
+  const textarea=document.querySelector<HTMLElement>('#correctedText'),image=document.querySelector<HTMLImageElement>('#mainImage');if(!textarea)return
+  const lines=editorText().split(/\r?\n/).map(x=>x.replace(/<[^>]+>/g,'').trim()).filter(Boolean),lengths=lines.map(x=>Array.from(x).length).filter(x=>x>0)
   if(!lengths.length)return toast('当前文本没有可估算的内容',true)
   const counts=new Map<number,number>();lengths.filter(x=>x>=3).forEach(x=>counts.set(x,(counts.get(x)||0)+1));const typical=[...counts].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0]?.[0]||Math.round(lengths.reduce((a,b)=>a+b,0)/lengths.length)
   const mainLineCount=lengths.filter(x=>x>=typical*.6).length
@@ -331,13 +326,12 @@ function estimateLinePattern(){
 }
 
 function insertSymbol(symbol:string){
-  const t=document.querySelector<HTMLTextAreaElement>('#correctedText')!,s=t.selectionStart,e=t.selectionEnd,selected=t.value.slice(s,e);undoText=t.value;let insert=symbol,caret=s+symbol.length
-  if(symbol==='【】'){insert=`【${selected}】`;caret=s+1+selected.length}
-  else if(symbol==='<>'){insert=`<${selected}>`;caret=s+1+selected.length}
-  else if((symbol==='。'||symbol==='、')&&selected){insert=Array.from(selected).map(ch=>/\s/.test(ch)?ch:ch+symbol).join('');caret=s+insert.length}
-  t.setRangeText(insert,s,e,'end');t.focus();t.setSelectionRange(caret,caret);draft!.corrected_text=t.value;updateUndoButton();markDirty()
+  const t=document.querySelector<HTMLElement>('#correctedText')!,selection=window.getSelection();if(!t||!selection||!selection.rangeCount)return
+  const range=selection.getRangeAt(0);if(!t.contains(range.commonAncestorContainer))return;const selected=range.toString();undoText=editorText();let insert=symbol
+  if(symbol==='【】')insert=`【${selected}】`;else if(symbol==='<>')insert=`<${selected}>`;else if((symbol==='。'||symbol==='、')&&selected)insert=Array.from(selected).map(ch=>/\s/.test(ch)?ch:ch+symbol).join('')
+  range.deleteContents();const node=document.createTextNode(insert);range.insertNode(node);range.setStartAfter(node);range.collapse(true);selection.removeAllRanges();selection.addRange(range);t.focus();draft!.corrected_text=editorText();clearBertMarks();updateUndoButton();markDirty()
 }
-function undoLastText(){const t=document.querySelector<HTMLTextAreaElement>('#correctedText');if(!t||undoText===null)return;t.value=undoText;undoText=null;draft!.corrected_text=t.value;t.focus();updateUndoButton();markDirty()}
+function undoLastText(){const t=document.querySelector<HTMLElement>('#correctedText');if(!t||undoText===null)return;t.textContent=undoText;undoText=null;draft!.corrected_text=editorText();t.focus();updateUndoButton();markDirty()}
 function updateUndoButton(){const b=document.querySelector<HTMLButtonElement>('#undoText');if(b)b.disabled=undoText===null}
 function markDirty(){dirty=true;updateSaveState();updateMissingHint()}
 function updateSaveState(message?:string){const x=document.querySelector('#saveState');if(!x)return;x.textContent=message??(dirty?'有未保存修改':'已同步');x.className=dirty?'unsaved':''}
