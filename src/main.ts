@@ -275,14 +275,15 @@ function renderCorrectedText() {
   }).join('')
 }
 function editorText() { return document.querySelector<HTMLElement>('#correctedText')?.innerText.replace(/\n$/, '') || '' }
-function clearBertMarks() { document.querySelectorAll<HTMLElement>('#correctedText mark').forEach(mark => mark.replaceWith(document.createTextNode(mark.textContent || ''))); const hint=document.querySelector('#bertHint');if(hint)hint.textContent='已修改文本，BERT 标记已取消' }
+function selectionBertMark() { const node=window.getSelection()?.anchorNode;return node instanceof HTMLElement?(node.closest('mark') as HTMLElement|null):node?.parentElement?.closest('mark') as HTMLElement|null }
+function clearBertMark(mark: HTMLElement | null) { if(!mark)return;mark.replaceWith(document.createTextNode(mark.textContent || ''));const hint=document.querySelector('#bertHint');if(hint)hint.textContent='已修改疑似错误字，该字标记已取消' }
 
 function bindEditor() {
   const body=document.querySelector('#editorBody')!,textarea=body.querySelector<HTMLElement>('#correctedText')!
-  let chipScrollTop: number | null = null
+  let chipScrollTop: number | null = null, editedBertMark: HTMLElement | null = null
   body.addEventListener('pointerdown', event => { if ((event.target as HTMLElement).closest('.chip')) chipScrollTop = body.scrollTop })
-  textarea.addEventListener('beforeinput',()=>{undoText=editorText();updateUndoButton()})
-  textarea.addEventListener('input',()=>{draft!.corrected_text=editorText();clearBertMarks();markDirty()})
+  textarea.addEventListener('beforeinput',()=>{undoText=editorText();editedBertMark=selectionBertMark();updateUndoButton()})
+  textarea.addEventListener('input',()=>{draft!.corrected_text=editorText();clearBertMark(editedBertMark);editedBertMark=null;markDirty()})
   body.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-field]').forEach(input=>input.closest('label')?.addEventListener('click',event=>{
     event.preventDefault();input.checked=!input.checked;updateMultiValue(input.dataset.field!,body);markDirty()
   }))
@@ -335,7 +336,7 @@ function insertSymbol(symbol:string){
   const t=document.querySelector<HTMLElement>('#correctedText')!,selection=window.getSelection();if(!t||!selection||!selection.rangeCount)return
   const range=selection.getRangeAt(0);if(!t.contains(range.commonAncestorContainer))return;const selected=range.toString();undoText=editorText();let insert=symbol
   if(symbol==='【】')insert=`【${selected}】`;else if(symbol==='<>')insert=`<${selected}>`;else if((symbol==='。'||symbol==='、')&&selected)insert=Array.from(selected).map(ch=>/\s/.test(ch)?ch:ch+symbol).join('')
-  range.deleteContents();const node=document.createTextNode(insert);range.insertNode(node);range.setStartAfter(node);range.collapse(true);selection.removeAllRanges();selection.addRange(range);t.focus();draft!.corrected_text=editorText();clearBertMarks();updateUndoButton();markDirty()
+  const marked=selectionBertMark();range.deleteContents();const node=document.createTextNode(insert);range.insertNode(node);range.setStartAfter(node);range.collapse(true);selection.removeAllRanges();selection.addRange(range);t.focus();draft!.corrected_text=editorText();clearBertMark(marked);updateUndoButton();markDirty()
 }
 function undoLastText(){const t=document.querySelector<HTMLElement>('#correctedText');if(!t||undoText===null)return;t.textContent=undoText;undoText=null;draft!.corrected_text=editorText();t.focus();updateUndoButton();markDirty()}
 function updateUndoButton(){const b=document.querySelector<HTMLButtonElement>('#undoText');if(b)b.disabled=undoText===null}
@@ -394,10 +395,12 @@ function renderDashboard(){
   const stages=['未完成','进行中','已完成','有疑问'],counts=Object.fromEntries(stages.map(s=>[s,tasks.filter(task=>taskStage(task)===s).length])),done=counts.已完成||0,rate=tasks.length?Math.round(done/tasks.length*100):0
   const questions=tasks.flatMap(task=>Object.entries(taskQuestions(task)).map(([field,note])=>({task,field,note})))
   const distributions=['内容部类','页面位置','制作方式','时代'].map(name=>({name,items:distribution(name)}))
-  document.querySelector('#mainView')!.innerHTML=`<main class="dashboard"><div class="dashboard-head"><div><span class="eyebrow">项目进度</span><h1>标注概览</h1></div><div class="completion"><b>${rate}%</b><span>完成率</span></div></div><section class="metric-grid">${[['样本总数',tasks.length],...stages.map(s=>[s,counts[s]||0])].map(([name,count])=>`<article><span>${name}</span><b>${count}</b></article>`).join('')}</section><section class="chart-grid"><article class="panel"><h2>任务状态</h2>${stages.map(s=>bar(s,counts[s]||0,tasks.length)).join('')}</article><article class="panel question-panel"><h2>有疑问（点击跳转）</h2>${questions.length?questions.map(({task,field,note})=>`<button data-question-jump="${task.sample_id}" data-question-field="${esc(field)}">#${task.sample_id} · ${esc(field)}${note?`：${esc(note)}`:''}</button>`).join(''):'<p class="muted">暂无疑问</p>'}</article></section><section class="distribution-grid">${distributions.map(({name,items})=>`<article class="panel"><h2>${esc(name)}分布</h2>${items.length?items.map(([option,count])=>bar(option,count,tasks.length)).join(''):'<p class="muted">尚无标注数据</p>'}</article>`).join('')}</section></main>`
+  const people: Record<string,number>={};tasks.forEach(task=>{if(task.annotator_name)people[task.annotator_name]=(people[task.annotator_name]||0)+1})
+  document.querySelector('#mainView')!.innerHTML=`<main class="dashboard"><div class="dashboard-head"><div><span class="eyebrow">项目进度</span><h1>标注概览</h1></div><div class="completion"><b>${rate}%</b><span>完成率</span></div></div><section class="metric-grid">${[['样本总数',tasks.length],...stages.map(s=>[s,counts[s]||0])].map(([name,count])=>`<article><span>${name}</span><b>${count}</b></article>`).join('')}</section><section class="chart-grid"><article class="panel"><h2>任务状态</h2>${stages.map(s=>bar(s,counts[s]||0,tasks.length)).join('')}</article><article class="panel question-panel"><h2>有疑问（点击跳转）</h2>${questions.length?questions.map(({task,field,note})=>`<button data-question-jump="${task.sample_id}" data-question-field="${esc(field)}">#${task.sample_id} · ${esc(field)}${note?`：${esc(note)}`:''}</button>`).join(''):'<p class="muted">暂无疑问</p>'}</article><article class="panel"><h2>标注人工作量</h2>${Object.entries(people).length?Object.entries(people).sort((a,b)=>b[1]-a[1]).map(([name,count])=>bar(name,count,tasks.length)).join(''):'<p class="muted">尚无标注记录</p>'}</article></section><section class="distribution-grid">${distributions.map(({name,items})=>`<article class="panel"><h2>${esc(name)}分布</h2>${items.length?pie(items):'<p class="muted">尚无标注数据</p>'}</article>`).join('')}</section></main>`
   document.querySelector('#progressText')!.textContent=`总计 ${tasks.length} 条 · 已完成 ${done} 条`
   document.querySelectorAll<HTMLButtonElement>('[data-question-jump]').forEach(button=>button.addEventListener('click',()=>{const id=Number(button.dataset.questionJump),field=button.dataset.questionField!,index=filtered.findIndex(task=>task.sample_id===id);if(index<0)return;dashboardMode=false;currentIndex=index;document.querySelector('#workspaceTab')!.classList.add('active');document.querySelector('#dashboardTab')!.classList.remove('active');(document.querySelector('#filters') as HTMLElement).style.visibility='visible';renderWorkspace();loadCurrent();window.setTimeout(()=>document.querySelector(`[data-annotation-field="${field}"]`)?.scrollIntoView({block:'center'}),0)}))
 }
 function bar(name:string,count:number,total:number){return `<div class="bar-row"><div><span>${esc(name)}</span><b>${count}</b></div><i><em style="width:${total?count/total*100:0}%"></em></i></div>`}
+function pie(items:[string,number][]) { const colors=['#8f3c36','#c47d37','#607d9e','#5b9279','#9b6f9d','#74777c'],total=items.reduce((sum,[,count])=>sum+count,0);let start=0;const slices=items.map(([,count],index)=>{const end=start+count/total*100,part=`${colors[index%colors.length]} ${start}% ${end}%`;start=end;return part}).join(',');return `<div class="pie-wrap"><i class="pie" style="background:conic-gradient(${slices})"></i><div class="pie-legend">${items.map(([name,count],index)=>`<span><b style="background:${colors[index%colors.length]}"></b>${esc(name)} ${Math.round(count/total*100)}%</span>`).join('')}</div></div>`}
 
 boot()
