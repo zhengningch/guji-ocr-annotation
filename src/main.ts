@@ -271,19 +271,20 @@ function renderCorrectedText() {
   const byOffset = new Map(alerts.map(alert => [Number(alert.offset), alert]))
   return Array.from(text).map((char, offset) => {
     const alert = byOffset.get(offset), probability = alert ? Number(alert.error_prob) : 0
-    return alert && alert.char === char ? `<mark title="BERT 疑似错误，概率 ${(probability * 100).toFixed(1)}%">${esc(char)}</mark>` : esc(char)
+    return alert && alert.char === char ? `<mark data-bert-offset="${offset}" title="BERT 疑似错误，概率 ${(probability * 100).toFixed(1)}%">${esc(char)}</mark>` : esc(char)
   }).join('')
 }
 function editorText() { return document.querySelector<HTMLElement>('#correctedText')?.textContent?.replace(/\n$/, '') || '' }
 function selectionBertMark() { const node=window.getSelection()?.anchorNode;return node instanceof HTMLElement?(node.closest('mark') as HTMLElement|null):node?.parentElement?.closest('mark') as HTMLElement|null }
+function selectionOffset(root: HTMLElement) { const range=window.getSelection()?.getRangeAt(0);if(!range||!root.contains(range.startContainer))return 0;const before=range.cloneRange();before.selectNodeContents(root);before.setEnd(range.startContainer,range.startOffset);return Array.from(before.toString()).length }
 function clearBertMark(mark: HTMLElement | null) { if(!mark)return;mark.replaceWith(document.createTextNode(mark.textContent || ''));const hint=document.querySelector('#bertHint');if(hint)hint.textContent='已修改疑似错误字，该字标记已取消' }
 
 function bindEditor() {
   const body=document.querySelector('#editorBody')!,textarea=body.querySelector<HTMLElement>('#correctedText')!
-  let chipScrollTop: number | null = null, editedBertMark: HTMLElement | null = null
+  let chipScrollTop: number | null = null, editedBertMark: HTMLElement | null = null, editStart=0, oldTextLength=0
   body.addEventListener('pointerdown', event => { if ((event.target as HTMLElement).closest('.chip')) chipScrollTop = body.scrollTop })
-  textarea.addEventListener('beforeinput',()=>{undoText=editorText();editedBertMark=selectionBertMark();updateUndoButton()})
-  textarea.addEventListener('input',()=>{draft!.corrected_text=editorText();clearBertMark(editedBertMark);editedBertMark=null;markDirty()})
+  textarea.addEventListener('beforeinput',()=>{undoText=editorText();oldTextLength=Array.from(undoText).length;editStart=selectionOffset(textarea);editedBertMark=selectionBertMark();updateUndoButton()})
+  textarea.addEventListener('input',()=>{const text=editorText(),delta=Array.from(text).length-oldTextLength,markedOffset=Number(editedBertMark?.dataset.bertOffset);let alerts=Array.isArray(draft!.bert_alerts)?draft!.bert_alerts:[];if(Number.isFinite(markedOffset))alerts=alerts.filter(alert=>Number(alert.offset)!==markedOffset);alerts.forEach(alert=>{if(Number(alert.offset)>editStart||(Number(alert.offset)===editStart&&!Number.isFinite(markedOffset)))alert.offset=Number(alert.offset)+delta});draft!.bert_alerts=alerts;draft!.corrected_text=text;clearBertMark(editedBertMark);editedBertMark=null;markDirty()})
   body.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-field]').forEach(input=>input.closest('label')?.addEventListener('click',event=>{
     event.preventDefault();input.checked=!input.checked;updateMultiValue(input.dataset.field!,body);markDirty()
   }))
