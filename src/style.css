@@ -86,6 +86,15 @@ summary small { color: #a0a3a8; font-size: 11px; font-weight: 400; margin-left: 
 .empty { flex-direction: column; gap: 8px; }
 .empty b { color: #595d64; font-size: 15px; }
 .error-box { color: #a13131; }
+.save-signal { position: fixed; right: 22px; bottom: 82px; z-index: 25; display: flex; align-items: center; gap: 8px; min-width: 132px; padding: 10px 13px; border: 1px solid #d9dce1; border-radius: 999px; color: #5f636b; background: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 8px 24px #0002; opacity: 0; transform: translateY(12px); pointer-events: none; transition: .22s ease; }
+.save-signal.show { opacity: 1; transform: translateY(0); }
+.save-signal i { width: 10px; height: 10px; border-radius: 50%; background: #b6bcc7; box-shadow: 0 0 0 4px #b6bcc722; }
+.save-signal.saving i { background: #d99020; box-shadow: 0 0 0 4px #d9902022; animation: signalPulse 1s infinite; }
+.save-signal.saved { color: #147347; border-color: #bfe8cf; background: #f3fbf6; }
+.save-signal.saved i { background: #21a366; box-shadow: 0 0 0 4px #21a36622; }
+.save-signal.error { color: #a72a2a; border-color: #f0caca; background: #fff6f6; }
+.save-signal.error i { background: #d93636; box-shadow: 0 0 0 4px #d9363622; }
+@keyframes signalPulse { 50% { transform: scale(1.35); opacity: .65; } }
 .toast { position: fixed; left: 50%; bottom: 78px; z-index: 20; transform: translate(-50%, 15px); opacity: 0; pointer-events: none; padding: 9px 14px; border-radius: 7px; color: #fff; background: #25272b; font-size: 12px; transition: .2s; box-shadow: 0 6px 18px #0003; }
 .toast.show { opacity: 1; transform: translate(-50%,0); }
 .toast.error { background: #a72a2a; }

@@ -64,6 +64,7 @@ let panX = 0
 let panY = 0
 let dashboardMode = false
 let undoText: string | null = null
+let saveSignalTimer: number | undefined
 
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 const basePath = import.meta.env.BASE_URL
@@ -124,7 +125,7 @@ function renderShell() {
     <div class="filters" id="filters"><select id="batchFilter"><option value="">全部批次</option><option>一期</option><option>二期</option><option>三期</option></select><select id="statusFilter"><option value="">全部状态</option>${selectOptions.任务状态.map(x => `<option>${x}</option>`).join('')}</select><input id="sampleSearch" placeholder="跳转编号，如 428" inputmode="numeric"></div>
     <div class="user-menu"><span>${esc(displayName)}</span><button id="logoutBtn" title="退出">退出</button></div>
   </header>
-  <div id="mainView"></div><div id="toast" class="toast"></div><div id="lightbox" class="lightbox" hidden><button id="closeLightbox">×</button><img alt="古籍大图"></div>`
+  <div id="mainView"></div><div id="saveSignal" class="save-signal" aria-live="polite"><i></i><span></span></div><div id="toast" class="toast"></div><div id="lightbox" class="lightbox" hidden><button id="closeLightbox">×</button><img alt="古籍大图"></div>`
   document.querySelector('#logoutBtn')!.addEventListener('click', logout)
   document.querySelector('#workspaceTab')!.addEventListener('click', () => switchMode(false))
   document.querySelector('#dashboardTab')!.addEventListener('click', () => switchMode(true))
@@ -280,14 +281,19 @@ function updateUndoButton(){const b=document.querySelector<HTMLButtonElement>('#
 function markDirty(){dirty=true;updateSaveState();updateMissingHint()}
 function updateSaveState(message?:string){const x=document.querySelector('#saveState');if(!x)return;x.textContent=message??(dirty?'有未保存修改':'已同步');x.className=dirty?'unsaved':''}
 
-async function save(goNext:boolean){if(!draft||busy)return;if(goNext&&!confirmMissing('完成并进入下一张'))return;busy=true;toggleSave(true);try{
+async function save(goNext:boolean){if(!draft||busy)return;if(goNext&&!confirmMissing('完成并进入下一张'))return;busy=true;toggleSave(true);updateSaveState('保存中…');showSaveSignal('saving','保存中…');try{
   const nextStatus=goNext?'已完成':draft.status==='待标注'?'标注中':draft.status
   const {data,error}=await supabase.rpc('save_workspace_task',{p_token:userToken,p_sample_id:draft.sample_id,p_revision:original!.revision,p_corrected_text:draft.corrected_text,p_status:nextStatus,p_labels:draft.labels,p_reviewer_note:draft.reviewer_note})
   if(error)throw error;const saved=(Array.isArray(data)?data[0]:data) as Task;if(!saved)throw new Error('保存失败')
-  const pos=tasks.findIndex(x=>x.sample_id===draft!.sample_id);tasks[pos]=saved;const fpos=filtered.findIndex(x=>x.sample_id===draft!.sample_id);filtered[fpos]=saved;draft=clone(saved);original=clone(saved);dirty=false;updateSaveState('保存成功');toast('标注已保存')
+  const pos=tasks.findIndex(x=>x.sample_id===draft!.sample_id);tasks[pos]=saved;const fpos=filtered.findIndex(x=>x.sample_id===draft!.sample_id);filtered[fpos]=saved;draft=clone(saved);original=clone(saved);dirty=false;updateSaveState('保存成功');showSaveSignal('saved','保存成功！');toast('标注已保存')
   if(goNext&&currentIndex<filtered.length-1){currentIndex++;loadCurrent()}
-}catch(e){updateSaveState('保存失败');toast((e as Error).message,true)}finally{busy=false;toggleSave(false)}}
+}catch(e){updateSaveState('保存失败');showSaveSignal('error','保存失败，请重试');toast((e as Error).message,true)}finally{busy=false;toggleSave(false)}}
 function toggleSave(v:boolean){document.querySelectorAll<HTMLButtonElement>('#saveBtn,#saveNextBtn').forEach(x=>x.disabled=v)}
+function showSaveSignal(state:'saving'|'saved'|'error',message:string){
+  const el=document.querySelector<HTMLElement>('#saveSignal');if(!el)return
+  window.clearTimeout(saveSignalTimer);el.className=`save-signal show ${state}`;el.querySelector('span')!.textContent=message
+  if(state!=='saving')saveSignalTimer=window.setTimeout(()=>{el.classList.remove('show')},3200)
+}
 const annotationFields=['内容部类','页面位置','制作方式','时代','刻印地域','刻印单位','行款','栏数','界行','版框','鱼尾','版心','象鼻','书耳','字体','图文版面','阅读痕迹','印章','磨损情况','数字化干扰']
 function missingAnnotations(){if(!draft)return[];return annotationFields.filter(name=>{const value=draft!.labels[name];return value==null||value===''||(Array.isArray(value)&&value.length===0)||value===CUSTOM_PREFIX||(Array.isArray(value)&&value.some(x=>x===CUSTOM_PREFIX))}).map(name=>fieldTitles[name]||name)}
 function updateMissingHint(){const el=document.querySelector('#missingHint');if(!el)return;const missing=missingAnnotations();el.textContent=missing.length?`尚有 ${missing.length} 项未标注：${missing.slice(0,5).join('、')}${missing.length>5?'…':''}`:'本条维度已标注完整';el.className=`missing-hint ${missing.length?'':'complete'}`}
@@ -320,7 +326,9 @@ function statusClass(s:string){return s==='已完成'?'done':s==='有疑问'?'wa
 function toast(msg:string,error=false){const x=document.querySelector('#toast')!;x.textContent=msg;x.className=`toast show${error?' error':''}`;setTimeout(()=>x.className='toast',2400)}
 
 function renderDashboard(){
-  const counts=Object.fromEntries(selectOptions.任务状态.map(s=>[s,tasks.filter(x=>x.status===s).length]));const done=counts.已完成||0,rate=tasks.length?Math.round(done/tasks.length*100):0
+  const counts: Record<string, number> = {}
+  selectOptions.任务状态.forEach(s => { counts[s] = tasks.filter(x => x.status === s).length })
+  const done=counts.已完成||0,rate=tasks.length?Math.round(done/tasks.length*100):0
   const batches=['一期','二期','三期'].map(b=>({name:b,count:tasks.filter(x=>x.batch===b).length}))
   const people=new Map<string,number>();tasks.forEach(x=>{if(x.annotator_name)people.set(x.annotator_name,(people.get(x.annotator_name)||0)+1)})
   document.querySelector('#mainView')!.innerHTML=`<main class="dashboard"><div class="dashboard-head"><div><span class="eyebrow">项目进度</span><h1>标注概览</h1></div><div class="completion"><b>${rate}%</b><span>完成率</span></div></div><section class="metric-grid"><article><span>样本总数</span><b>${tasks.length}</b></article><article><span>待标注</span><b>${counts.待标注||0}</b></article><article><span>待复核</span><b>${counts.待复核||0}</b></article><article><span>已完成</span><b>${done}</b></article></section><section class="chart-grid"><article class="panel"><h2>任务状态</h2>${selectOptions.任务状态.map(s=>bar(s,counts[s]||0,tasks.length)).join('')}</article><article class="panel"><h2>数据批次</h2>${batches.map(x=>bar(x.name,x.count,tasks.length)).join('')}</article><article class="panel"><h2>标注人任务量</h2>${[...people.entries()].sort((a,b)=>b[1]-a[1]).map(([n,c])=>bar(n,c,tasks.length)).join('')||'<p class="muted">尚无标注记录</p>'}</article></section></main>`
