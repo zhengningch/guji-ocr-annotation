@@ -260,7 +260,7 @@ function singleField(name: string, value: unknown) {
 }
 function multiField(name: string, value: unknown) {
   const options=multiOptions[name],values=Array.isArray(value)?value:[],customValue=values.find(x=>x==='其他'||x.startsWith('其他：')||x.startsWith('主观题：')||!options.includes(x))||'',custom=customValue.replace(/^(其他|主观题)：/,'').replace(/^(其他|主观题)$/,'');const set=new Set(values)
-  return `<fieldset class="chip-field ${questionMap()[name]!==undefined?'has-question':''}" data-annotation-field="${name}"><legend>${fieldTitles[name]||name}${questionToggle(name)}</legend><div>${options.map(x=>{const customOption=x==='其他',selected=customOption?!!customValue:set.has(x);return `<label class="chip ${selected?'selected':''}"><input type="checkbox" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${customValue?'show':''}" data-custom-box="${name}"><input data-custom-multi="${name}" value="${esc(custom)}" placeholder="请填写其他内容"></div>${questionControl(name)}</fieldset>`
+  return `<fieldset class="chip-field ${questionMap()[name]!==undefined?'has-question':''}" data-annotation-field="${name}"><legend>${fieldTitles[name]||name}${questionToggle(name)}<button type="button" class="clear-multi" data-clear-multi="${name}">× 清空本项</button></legend><div>${options.map(x=>{const customOption=x==='其他',selected=customOption?!!customValue:set.has(x);return `<label class="chip ${selected?'selected':''}"><input type="checkbox" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${customValue?'show':''}" data-custom-box="${name}"><input data-custom-multi="${name}" value="${esc(custom)}" placeholder="请填写其他内容"></div>${questionControl(name)}</fieldset>`
 }
 function textField(name: string, value: unknown, placeholder='') { return `<div class="control-question ${questionMap()[name]!==undefined?'has-question':''}" data-annotation-field="${name}"><label class="control wide"><span>${name}${questionToggle(name)}</span><input data-field="${name}" value="${esc(value)}" placeholder="${esc(placeholder)}"></label>${questionControl(name)}</div>` }
 function linePatternField(value: unknown) { return `<div class="line-pattern control-question ${questionMap().行款!==undefined?'has-question':''}" data-annotation-field="行款"><label class="control wide"><span>行款 <small>根据校订文本自动估算，可手动修改</small>${questionToggle('行款')}</span><input data-field="行款" value="${esc(value)}" placeholder="如：半页10行，行19字"></label><button type="button" id="estimatePattern">重新估算</button>${questionControl('行款')}</div>` }
@@ -285,6 +285,9 @@ function bindEditor() {
   textarea.addEventListener('input',()=>{draft!.corrected_text=editorText();clearBertMarks();markDirty()})
   body.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-field]').forEach(input=>input.closest('label')?.addEventListener('click',event=>{
     event.preventDefault();input.checked=!input.checked;updateMultiValue(input.dataset.field!,body);markDirty()
+  }))
+  body.querySelectorAll<HTMLButtonElement>('[data-clear-multi]').forEach(button=>button.addEventListener('click',()=>{
+    const name=button.dataset.clearMulti!;body.querySelectorAll<HTMLInputElement>(`input[type="checkbox"][data-field="${name}"]`).forEach(input=>{input.checked=false;input.closest('.chip')?.classList.remove('selected')});draft!.labels[name]=[];const box=body.querySelector<HTMLElement>(`[data-custom-box="${name}"]`);box?.classList.remove('show');markDirty()
   }))
   body.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-field]').forEach(el=>el.addEventListener('input',()=>{
     const name=el.dataset.field!
