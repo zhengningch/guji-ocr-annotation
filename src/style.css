@@ -52,7 +52,9 @@ h1 { margin: 2px 0 0; font: 700 26px/1.2 "Noto Serif SC", serif; color: #491313;
 .ocr-preview-head { display: flex; justify-content: space-between; padding: 8px 11px; border-bottom: 1px solid #eee5d8; color: #625c53; font-size: 12px; font-weight: 600; }
 .ocr-preview-head small { color: #a36a2d; font-size: 11px; font-weight: 400; }
 .ocr-preview-text { max-height: 180px; overflow: auto; padding: 11px; white-space: pre-wrap; color: #68635b; font: 13px/1.8 "Songti SC","STSong",serif; }
-.ocr-preview-text mark { padding: 1px 2px; border-radius: 2px; color: #8d2424; background: #ffd2c8; box-shadow: 0 0 0 1px #e99b8c; }
+.ocr-preview-text mark { padding: 1px 2px; border-radius: 2px; color: #8d2424; background: #ffd2c8; box-shadow: 0 0 0 1px #e99b8c; cursor: pointer; }
+.ocr-preview-text mark.dismissed { padding: 0; color: inherit; background: transparent; box-shadow: none; }
+.optional-note { margin-top: 16px; }
 .symbolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 9px 0 6px; }
 .symbolbar > span { color: #807d76; font-size: 11px; margin-right: 3px; }
 .symbolbar button { padding: 5px 8px; border: 1px solid #d6d2ca; background: #fdfcf9; font: 12px/1.2 ui-monospace,"PingFang SC",monospace; }
@@ -85,6 +87,7 @@ summary small { color: #a0a3a8; font-size: 11px; font-weight: 400; margin-left: 
 .savebar { flex: 0 0 62px; height: 62px; display: flex; justify-content: flex-end; align-items: center; gap: 9px; padding: 0 22px; border-top: 1px solid #d8d4cc; background: #fbfaf7f2; backdrop-filter: blur(8px); box-shadow: 0 -3px 12px #332b1f0a; }
 .savebar > span { margin-right: auto; color: #7c8189; font-size: 12px; }
 .savebar > span.unsaved { color: #ad5c00; }
+.savebar > span.unsaved::before { content: '● '; }
 .savebar button { min-width: 78px; }
 .savebar .primary { min-width: 126px; }
 .loading, .empty { height: 100%; display: flex; align-items: center; justify-content: center; color: #8d929a; font-size: 13px; }

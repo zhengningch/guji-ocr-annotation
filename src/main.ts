@@ -207,15 +207,17 @@ function renderEditor() {
   document.querySelector('#editorBody')!.innerHTML = `
     <div class="record-head"><div><span class="eyebrow">当前样本</span><h1>#${draft!.sample_id}</h1></div><div class="badges"><span>${esc(draft!.batch)}</span><span class="status-${statusClass(draft!.status)}">${esc(draft!.status)}</span></div></div>
     <div class="annotator-note">${draft!.annotator_name ? `标注人：${esc(draft!.annotator_name)}` : '首次保存时自动记录当前标注人'}</div>
-    <label class="field-label" for="correctedText">校订文本 <em>主要填写区</em></label><textarea id="correctedText" class="main-text" spellcheck="false">${esc(draft!.corrected_text)}</textarea>
+    ${textField('链接位置', l.链接位置, '请输入本条资料的来源链接（必填）')}
     ${renderOcrPreview()}
+    <label class="field-label" for="correctedText">校订文本 <em>主要填写区</em></label><textarea id="correctedText" class="main-text" spellcheck="false">${esc(draft!.corrected_text)}</textarea>
     <div class="symbolbar"><span>校订符号</span>${[
       ['□','残损字'],['=','重文号'],['。','圈点。'],['、','圈点、'],['【】','小字【】'],['<>','批注<>']
     ].map(([value,label],i) => `<button data-symbol="${esc(value)}" title="快捷键 Alt+${i+1}">${esc(label)}</button>`).join('')}<button id="undoText" class="undo-button" disabled>↶ 撤销一步</button></div>
     <div id="missingHint" class="missing-hint"></div>
     <details open><summary><span>文本信息</span><small>内容来源与页面位置</small></summary><div class="details-body">${singleField('内容部类',l.内容部类)}${singleField('页面位置',l.页面位置)}${textField('疑难说明', l.疑难说明, '无法判断或需要说明的问题')}</div></details>
     <details open><summary><span>物质形态</span><small>制作、时代、地域、版式</small></summary><div class="details-body">${singleField('制作方式',l.制作方式)}${singleField('时代',l.时代)}${singleField('刻印地域',l.刻印地域)}${singleField('刻印单位',l.刻印单位)}${linePatternField(l.行款)}${singleField('栏数',l.栏数)}${singleField('界行',l.界行)}${singleField('版框',l.版框)}${multiField('鱼尾',l.鱼尾)}${singleField('版心',l.版心)}${singleField('象鼻',l.象鼻)}${singleField('书耳',l.书耳)}${singleField('字体',l.字体)}${singleField('图文版面',l.图文版面)}</div></details>
-    <details open><summary><span>阅读与流通</span><small>批注圈点、印章、磨损、数字化</small></summary><div class="details-body">${multiField('阅读痕迹', l.阅读痕迹)}${singleField('印章',l.印章)}${multiField('磨损情况', l.磨损情况)}${multiField('数字化干扰', l.数字化干扰)}</div></details>`
+    <details open><summary><span>阅读与流通</span><small>批注圈点、印章、磨损、数字化</small></summary><div class="details-body">${multiField('阅读痕迹', l.阅读痕迹)}${singleField('印章',l.印章)}${multiField('磨损情况', l.磨损情况)}${multiField('数字化干扰', l.数字化干扰)}</div></details>
+    <div class="optional-note">${textField('备注', l.备注, '可选，不填写也可以保存')}</div>`
   bindEditor(); updateSaveState(); updateMissingHint()
 }
 
@@ -265,6 +267,7 @@ function bindEditor() {
   body.querySelectorAll<HTMLInputElement>('[data-custom-single]').forEach(el=>el.addEventListener('input',()=>{draft!.labels[el.dataset.customSingle!]=CUSTOM_PREFIX+el.value;markDirty()}))
   body.querySelectorAll<HTMLInputElement>('[data-custom-multi]').forEach(el=>el.addEventListener('input',()=>{updateMultiValue(el.dataset.customMulti!,body);markDirty()}))
   body.querySelectorAll<HTMLButtonElement>('[data-symbol]').forEach(b=>b.addEventListener('click',()=>insertSymbol(b.dataset.symbol!)))
+  body.querySelectorAll<HTMLElement>('.ocr-preview-text mark').forEach(mark => mark.addEventListener('click', () => { mark.classList.add('dismissed'); mark.removeAttribute('title') }))
   body.querySelector('#undoText')?.addEventListener('click',undoLastText)
   body.querySelector('#estimatePattern')?.addEventListener('click', estimateLinePattern)
 }
@@ -312,7 +315,7 @@ function showSaveSignal(state:'saving'|'saved'|'error',message:string){
   window.clearTimeout(saveSignalTimer);el.className=`save-signal show ${state}`;el.querySelector('span')!.textContent=message
   if(state!=='saving')saveSignalTimer=window.setTimeout(()=>{el.classList.remove('show')},3200)
 }
-const annotationFields=['内容部类','页面位置','制作方式','时代','刻印地域','刻印单位','行款','栏数','界行','版框','鱼尾','版心','象鼻','书耳','字体','图文版面','阅读痕迹','印章','磨损情况','数字化干扰']
+const annotationFields=['链接位置','内容部类','页面位置','制作方式','时代','刻印地域','刻印单位','行款','栏数','界行','版框','鱼尾','版心','象鼻','书耳','字体','图文版面','阅读痕迹','印章','磨损情况','数字化干扰']
 function missingAnnotations(){if(!draft)return[];return annotationFields.filter(name=>{const value=draft!.labels[name];return value==null||value===''||(Array.isArray(value)&&value.length===0)||value===CUSTOM_PREFIX||(Array.isArray(value)&&value.some(x=>x===CUSTOM_PREFIX))}).map(name=>fieldTitles[name]||name)}
 function updateMissingHint(){const el=document.querySelector('#missingHint');if(!el)return;const missing=missingAnnotations();el.textContent=missing.length?`尚有 ${missing.length} 项未标注：${missing.slice(0,5).join('、')}${missing.length>5?'…':''}`:'本条维度已标注完整';el.className=`missing-hint ${missing.length?'':'complete'}`}
 function confirmMissing(action:string){const missing=missingAnnotations();return !missing.length||confirm(`还有 ${missing.length} 项未标注：\n${missing.join('、')}\n\n仍要${action}吗？`)}
