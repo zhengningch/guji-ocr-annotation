@@ -151,7 +151,10 @@ function renderShell() {
 }
 
 function renderWorkspace() {
-  const split = localStorage.getItem('guji_split') || '55%'
+  const savedSplit = localStorage.getItem('guji_split') || ''
+  const splitValue = Number.parseFloat(savedSplit)
+  const split = /^\d+(\.\d+)?%$/.test(savedSplit) && splitValue >= 35 && splitValue <= 70 ? savedSplit : '55%'
+  if (split !== savedSplit) localStorage.removeItem('guji_split')
   document.querySelector('#mainView')!.innerHTML = `<main class="workspace" style="--left-pane:${split}">
     <section class="viewer"><div class="viewer-toolbar"><span id="imageTitle">图片</span><div><button id="zoomOut" title="缩小">−</button><button id="fitImage" title="完整显示图片">适应窗口</button><button id="zoomIn" title="放大">＋</button><button id="rotateImage" title="顺时针旋转">↻</button><button id="fullImage" title="全屏查看">全屏</button></div></div><div id="imageStage" class="image-stage" title="滚轮缩放，按住拖动图片"></div></section>
     <div id="splitter" class="splitter" title="拖动调整左右宽度"></div>
@@ -274,7 +277,6 @@ function bindEditor() {
       body.querySelectorAll(`input[data-field="${name}"]`).forEach(x=>x.closest('.chip')?.classList.toggle('selected',(x as HTMLInputElement).checked))
       const custom=el.value==='__custom__',box=body.querySelector<HTMLElement>(`[data-custom-box="${name}"]`);box?.classList.toggle('show',custom)
       draft!.labels[name]=custom?CUSTOM_PREFIX+(box?.querySelector<HTMLInputElement>('input')?.value||''):el.value
-      if(custom)box?.querySelector<HTMLInputElement>('input')?.focus()
     } else draft!.labels[name]=el.value
     markDirty()
   }))
@@ -290,7 +292,6 @@ function updateMultiValue(name:string,body:Element){
   const checked=Array.from(body.querySelectorAll<HTMLInputElement>(`input[data-field="${name}"]:checked`)),customSelected=checked.some(x=>x.value==='__custom__'),box=body.querySelector<HTMLElement>(`[data-custom-box="${name}"]`)
   checked.forEach(x=>x.closest('.chip')?.classList.toggle('selected',x.checked));box?.classList.toggle('show',customSelected)
   const values=checked.filter(x=>x.value!=='__custom__').map(x=>x.value);if(customSelected)values.push(CUSTOM_PREFIX+(box?.querySelector<HTMLInputElement>('input')?.value||''));draft!.labels[name]=values
-  if(customSelected&&!box?.querySelector<HTMLInputElement>('input')?.value)box?.querySelector<HTMLInputElement>('input')?.focus()
 }
 
 function estimateLinePattern(){
