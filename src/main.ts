@@ -233,13 +233,16 @@ function textField(name: string, value: Value | undefined, placeholder='') { ret
 function linePatternField(value: Value | undefined) { return `<div class="line-pattern"><label class="control wide"><span>行款 <small>根据校订文本自动估算，可手动修改</small></span><input data-field="行款" value="${esc(value)}" placeholder="如：半页10行，行19字"></label><button type="button" id="estimatePattern">重新估算</button></div>` }
 
 function renderOcrPreview() {
-  const text = draft!.ocr_initial || ''
-  const alerts = Array.isArray(draft!.bert_alerts) ? draft!.bert_alerts : []
+  const text = typeof draft!.ocr_initial === 'string' ? draft!.ocr_initial : ''
   if (!text) return ''
-  const byOffset = new Map(alerts.map(alert => [alert.offset, alert]))
+  let rawAlerts: unknown = draft!.bert_alerts
+  if (typeof rawAlerts === 'string') { try { rawAlerts = JSON.parse(rawAlerts) } catch { rawAlerts = [] } }
+  const alerts = Array.isArray(rawAlerts) ? rawAlerts.filter((x): x is BertAlert => !!x && typeof x === 'object' && Number.isFinite(Number((x as BertAlert).offset))) : []
+  const byOffset = new Map(alerts.map(alert => [Number(alert.offset), alert]))
   const html = Array.from(text).map((char, offset) => {
     const alert = byOffset.get(offset)
-    return alert ? `<mark title="BERT 疑似错误，概率 ${(alert.error_prob * 100).toFixed(1)}%">${esc(char)}</mark>` : esc(char)
+    const probability = alert ? Number(alert.error_prob) : 0
+    return alert ? `<mark title="BERT 疑似错误，概率 ${(probability * 100).toFixed(1)}%">${esc(char)}</mark>` : esc(char)
   }).join('')
   return `<section class="ocr-preview"><div class="ocr-preview-head"><span>OCR 初始识别</span><small>${alerts.length ? `BERT 标记 ${alerts.length} 处（仅供复核）` : 'BERT 未标记疑似错误'}</small></div><div class="ocr-preview-text">${html}</div></section>`
 }
