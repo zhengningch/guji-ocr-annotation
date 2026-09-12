@@ -72,6 +72,17 @@ const esc = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&am
 const basePath = import.meta.env.BASE_URL
 const current = () => filtered[currentIndex]
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
+function parseJson<T>(value: unknown, fallback: T): T {
+  if (typeof value !== 'string') return (value ?? fallback) as T
+  try { return JSON.parse(value) as T } catch { return fallback }
+}
+function normalizeTask(value: Task): Task {
+  return {
+    ...value,
+    labels: parseJson<Labels>(value.labels, {}),
+    bert_alerts: parseJson<BertAlert[]>(value.bert_alerts, []),
+  }
+}
 
 async function boot() {
   userToken ? await startApp() : renderAuth()
@@ -107,7 +118,7 @@ async function startApp() {
   renderLoading()
   const { data, error } = await supabase.rpc('get_workspace_tasks', { p_token: userToken })
   if (error) { if (error.message.includes('登录已失效')) return logout(); return renderSetupError(error.message) }
-  tasks = (data ?? []) as Task[]
+  tasks = ((data ?? []) as Task[]).map(normalizeTask)
   filtered = [...tasks]
   renderShell()
   loadCurrent()
@@ -187,13 +198,12 @@ function loadCurrent() {
   if (!current()) {
     document.querySelector('#editorBody')!.innerHTML = '<div class="empty"><b>没有符合条件的任务</b><span>请调整筛选条件</span></div>'; document.querySelector('#imageStage')!.innerHTML = '<div class="empty light">暂无图片</div>'; updateProgress(); return
   }
-  draft = clone(current()); original = clone(current()); dirty = false; zoom = 1; rotation = 0; panX = 0; panY = 0; undoText = null
-  draft.labels ||= {}
-  draft.labels.制作方式 ||= '雕版刻本'
-  draft.labels.栏数 ||= '一'
-  draft.labels.字体 = Array.isArray(draft.labels.字体) ? (draft.labels.字体[0] || '楷书') : (draft.labels.字体 || '楷书')
-  if (draft.labels.图文版面 === '纯文字') draft.labels.图文版面 = '无'
   try {
+    draft = normalizeTask(clone(current())); original = clone(draft); dirty = false; zoom = 1; rotation = 0; panX = 0; panY = 0; undoText = null
+    draft.labels.制作方式 ||= '雕版刻本'
+    draft.labels.栏数 ||= '一'
+    draft.labels.字体 = Array.isArray(draft.labels.字体) ? (draft.labels.字体[0] || '楷书') : (draft.labels.字体 || '楷书')
+    if (draft.labels.图文版面 === '纯文字') draft.labels.图文版面 = '无'
     renderImage(); renderEditor(); updateProgress()
   } catch (error) {
     console.error('加载标注页失败：', error)
