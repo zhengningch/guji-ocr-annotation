@@ -72,6 +72,7 @@ h1 { margin: 2px 0 0; font: 700 26px/1.2 "Noto Serif SC", serif; color: #491313;
 .control.wide { display: flex; width: 100%; }
 .chip-field { margin: 2px 0 14px; padding: 0; border: 0; }
 .chip-field legend { margin-bottom: 7px; }
+.question-toggle { display: inline-grid; width: 18px; height: 18px; place-items: center; margin-left: 7px; padding: 0; border: 1px solid #c9c4bb; border-radius: 50%; color: #7d766d; background: #fff; font-size: 12px; font-weight: 700; vertical-align: middle; }.question-toggle.active { border-color: #d38527; color: #fff; background: #d38527; }.has-question > legend,.control-question.has-question .control>span { color: #a75e13; }.question-note { display: none; margin-top: 8px; }.question-note.show { display: block; }.question-note input { width: 100%; height: 34px; padding: 0 10px; border: 1px solid #e6c99f; border-radius: 4px; background: #fff9ef; outline: none; font-size: 12px; }
 .chip-field > div { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip input { position: fixed; top: 0; left: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 .chip span { display: inline-block; padding: 5px 9px; border: 1px solid #d7d3cb; border-radius: 3px; background: #fff; color: #67645f; font-size: 12px; cursor: pointer; }

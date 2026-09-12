@@ -3,7 +3,8 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config'
 import './style.css'
 
 type Value = string | string[]
-type Labels = Record<string, Value>
+type QuestionMap = Record<string, string>
+type Labels = Record<string, Value | QuestionMap>
 type BertAlert = { offset: number; char: string; error_prob: number }
 type Task = {
   sample_id: number
@@ -250,16 +251,19 @@ function renderEditor() {
 
 const fieldTitles: Record<string,string> = { 内容部类:'内容来源（经史子集）', 页面位置:'位置来源', 制作方式:'制作方式与技术类型', 时代:'刻印时代', 图文版面:'图文', 阅读痕迹:'批注／圈点' }
 const CUSTOM_PREFIX='其他：'
-function singleField(name: string, value: Value | undefined) {
+function questionMap(): QuestionMap { const value=draft?.labels.__questions; return value && typeof value==='object' && !Array.isArray(value) ? value as QuestionMap : {} }
+function questionToggle(name: string) { const active=Object.prototype.hasOwnProperty.call(questionMap(),name);return `<button type="button" class="question-toggle ${active?'active':''}" data-question-toggle="${name}" title="标记此项有疑问">?</button>` }
+function questionControl(name: string) { const questions=questionMap(),active=Object.prototype.hasOwnProperty.call(questions,name);return `<div class="question-note ${active?'show':''}" data-question-box="${name}"><input data-question-note="${name}" value="${esc(questions[name]||'')}" placeholder="可选：填写此项疑问说明"></div>` }
+function singleField(name: string, value: unknown) {
   const options=selectOptions[name],raw=String(value??''),isCustom=raw==='其他'||raw.startsWith('主观题：')||(!!raw&&!options.includes(raw)),custom=isCustom?raw.replace(/^(其他|主观题)：/,'').replace(/^(其他|主观题)$/,''):''
-  return `<fieldset class="chip-field single-chip-field"><legend>${fieldTitles[name]||name}</legend><div>${options.map(x=>{const customOption=x==='其他',selected=customOption?isCustom:x===raw;return `<label class="chip ${selected?'selected':''}"><input type="radio" name="field-${name}" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${isCustom?'show':''}" data-custom-box="${name}"><input data-custom-single="${name}" value="${esc(custom)}" placeholder="请填写其他内容"></div></fieldset>`
+  return `<fieldset class="chip-field single-chip-field ${questionMap()[name]!==undefined?'has-question':''}" data-annotation-field="${name}"><legend>${fieldTitles[name]||name}${questionToggle(name)}</legend><div>${options.map(x=>{const customOption=x==='其他',selected=customOption?isCustom:x===raw;return `<label class="chip ${selected?'selected':''}"><input type="radio" name="field-${name}" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${isCustom?'show':''}" data-custom-box="${name}"><input data-custom-single="${name}" value="${esc(custom)}" placeholder="请填写其他内容"></div>${questionControl(name)}</fieldset>`
 }
-function multiField(name: string, value: Value | undefined) {
+function multiField(name: string, value: unknown) {
   const options=multiOptions[name],values=Array.isArray(value)?value:[],customValue=values.find(x=>x==='其他'||x.startsWith('其他：')||x.startsWith('主观题：')||!options.includes(x))||'',custom=customValue.replace(/^(其他|主观题)：/,'').replace(/^(其他|主观题)$/,'');const set=new Set(values)
-  return `<fieldset class="chip-field"><legend>${fieldTitles[name]||name}</legend><div>${options.map(x=>{const customOption=x==='其他',selected=customOption?!!customValue:set.has(x);return `<label class="chip ${selected?'selected':''}"><input type="checkbox" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${customValue?'show':''}" data-custom-box="${name}"><input data-custom-multi="${name}" value="${esc(custom)}" placeholder="请填写其他内容"></div></fieldset>`
+  return `<fieldset class="chip-field ${questionMap()[name]!==undefined?'has-question':''}" data-annotation-field="${name}"><legend>${fieldTitles[name]||name}${questionToggle(name)}</legend><div>${options.map(x=>{const customOption=x==='其他',selected=customOption?!!customValue:set.has(x);return `<label class="chip ${selected?'selected':''}"><input type="checkbox" data-field="${name}" value="${customOption?'__custom__':x}" ${selected?'checked':''}><span>${x}</span></label>`}).join('')}</div><div class="custom-answer ${customValue?'show':''}" data-custom-box="${name}"><input data-custom-multi="${name}" value="${esc(custom)}" placeholder="请填写其他内容"></div>${questionControl(name)}</fieldset>`
 }
-function textField(name: string, value: Value | undefined, placeholder='') { return `<label class="control wide"><span>${name}</span><input data-field="${name}" value="${esc(value)}" placeholder="${esc(placeholder)}"></label>` }
-function linePatternField(value: Value | undefined) { return `<div class="line-pattern"><label class="control wide"><span>行款 <small>根据校订文本自动估算，可手动修改</small></span><input data-field="行款" value="${esc(value)}" placeholder="如：半页10行，行19字"></label><button type="button" id="estimatePattern">重新估算</button></div>` }
+function textField(name: string, value: unknown, placeholder='') { return `<div class="control-question ${questionMap()[name]!==undefined?'has-question':''}" data-annotation-field="${name}"><label class="control wide"><span>${name}${questionToggle(name)}</span><input data-field="${name}" value="${esc(value)}" placeholder="${esc(placeholder)}"></label>${questionControl(name)}</div>` }
+function linePatternField(value: unknown) { return `<div class="line-pattern control-question ${questionMap().行款!==undefined?'has-question':''}" data-annotation-field="行款"><label class="control wide"><span>行款 <small>根据校订文本自动估算，可手动修改</small>${questionToggle('行款')}</span><input data-field="行款" value="${esc(value)}" placeholder="如：半页10行，行19字"></label><button type="button" id="estimatePattern">重新估算</button>${questionControl('行款')}</div>` }
 
 function renderOcrPreview() {
   const text = typeof draft!.ocr_initial === 'string' ? draft!.ocr_initial : ''
@@ -296,6 +300,13 @@ function bindEditor() {
   body.querySelectorAll<HTMLInputElement>('[data-custom-single]').forEach(el=>el.addEventListener('input',()=>{draft!.labels[el.dataset.customSingle!]=CUSTOM_PREFIX+el.value;markDirty()}))
   body.querySelectorAll<HTMLInputElement>('[data-custom-multi]').forEach(el=>el.addEventListener('input',()=>{updateMultiValue(el.dataset.customMulti!,body);markDirty()}))
   body.querySelectorAll<HTMLButtonElement>('[data-symbol]').forEach(b=>b.addEventListener('click',()=>insertSymbol(b.dataset.symbol!)))
+  body.querySelectorAll<HTMLButtonElement>('[data-question-toggle]').forEach(button=>button.addEventListener('click',()=>{
+    const name=button.dataset.questionToggle!,questions=questionMap(),active=Object.prototype.hasOwnProperty.call(questions,name)
+    if(active) delete questions[name]; else questions[name]=''
+    draft!.labels.__questions=questions;button.classList.toggle('active',!active);button.closest('[data-annotation-field]')?.classList.toggle('has-question',!active)
+    body.querySelector<HTMLElement>(`[data-question-box="${name}"]`)?.classList.toggle('show',!active);markDirty()
+  }))
+  body.querySelectorAll<HTMLInputElement>('[data-question-note]').forEach(input=>input.addEventListener('input',()=>{questionMap()[input.dataset.questionNote!]=input.value;markDirty()}))
   body.querySelectorAll<HTMLElement>('.ocr-preview-text mark').forEach(mark => mark.addEventListener('click', () => { mark.classList.add('dismissed'); mark.removeAttribute('title') }))
   body.querySelector('#undoText')?.addEventListener('click',undoLastText)
   body.querySelector('#estimatePattern')?.addEventListener('click', estimateLinePattern)
@@ -330,7 +341,7 @@ function updateUndoButton(){const b=document.querySelector<HTMLButtonElement>('#
 function markDirty(){dirty=true;updateSaveState();updateMissingHint()}
 function updateSaveState(message?:string){const x=document.querySelector('#saveState');if(!x)return;x.textContent=message??(dirty?'有未保存修改':'已同步');x.className=dirty?'unsaved':''}
 
-async function save(goNext:boolean){if(!draft||busy)return;const missing=missingAnnotations();if(missing.includes('链接位置')){toast('请先填写必填项：链接位置',true);return}if(goNext&&!confirmMissing('完成并进入下一张'))return;busy=true;toggleSave(true);updateSaveState('保存中…');showSaveSignal('saving','保存中…');try{
+async function save(goNext:boolean){if(!draft||busy)return;if(goNext&&!confirmMissing('完成并进入下一张'))return;busy=true;toggleSave(true);updateSaveState('保存中…');showSaveSignal('saving','保存中…');try{
   const nextStatus=goNext?'已完成':draft.status==='待标注'?'标注中':draft.status
   const {data,error}=await supabase.rpc('save_workspace_task',{p_token:userToken,p_sample_id:draft.sample_id,p_revision:original!.revision,p_corrected_text:draft.corrected_text,p_status:nextStatus,p_labels:draft.labels,p_reviewer_note:draft.reviewer_note})
   if(error)throw error;const saved=(Array.isArray(data)?data[0]:data) as Task;if(!saved)throw new Error('保存失败')
@@ -343,7 +354,7 @@ function showSaveSignal(state:'saving'|'saved'|'error',message:string){
   window.clearTimeout(saveSignalTimer);el.className=`save-signal show ${state}`;el.querySelector('span')!.textContent=message
   if(state!=='saving')saveSignalTimer=window.setTimeout(()=>{el.classList.remove('show')},3200)
 }
-const annotationFields=['链接位置','内容部类','页面位置','制作方式','时代','刻印地域','刻印单位','行款','栏数','界行','版框','鱼尾','版心','象鼻','书耳','字体','图文版面','阅读痕迹','印章','磨损情况','数字化干扰']
+const annotationFields=['内容部类','页面位置','制作方式','时代','刻印地域','刻印单位','行款','栏数','界行','版框','鱼尾','版心','象鼻','书耳','字体','图文版面','阅读痕迹','印章','磨损情况','数字化干扰']
 function missingAnnotations(){if(!draft)return[];return annotationFields.filter(name=>{const value=draft!.labels[name];return value==null||value===''||(Array.isArray(value)&&value.length===0)||value===CUSTOM_PREFIX||(Array.isArray(value)&&value.some(x=>x===CUSTOM_PREFIX))}).map(name=>fieldTitles[name]||name)}
 function updateMissingHint(){const el=document.querySelector('#missingHint');if(!el)return;const missing=missingAnnotations();el.textContent=missing.length?`尚有 ${missing.length} 项未标注：${missing.slice(0,5).join('、')}${missing.length>5?'…':''}`:'本条维度已标注完整';el.className=`missing-hint ${missing.length?'':'complete'}`}
 function confirmMissing(action:string){const missing=missingAnnotations();return !missing.length||confirm(`还有 ${missing.length} 项未标注：\n${missing.join('、')}\n\n仍要${action}吗？`)}
