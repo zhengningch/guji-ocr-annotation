@@ -278,6 +278,8 @@ function renderOcrPreview() {
 
 function bindEditor() {
   const body=document.querySelector('#editorBody')!,textarea=body.querySelector<HTMLTextAreaElement>('#correctedText')!
+  let chipScrollTop: number | null = null
+  body.addEventListener('pointerdown', event => { if ((event.target as HTMLElement).closest('.chip')) chipScrollTop = body.scrollTop })
   textarea.addEventListener('beforeinput',()=>{undoText=textarea.value;updateUndoButton()})
   textarea.addEventListener('input',()=>{draft!.corrected_text=textarea.value;markDirty()})
   body.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-field]').forEach(el=>el.addEventListener('input',()=>{
@@ -289,6 +291,7 @@ function bindEditor() {
       draft!.labels[name]=custom?CUSTOM_PREFIX+(box?.querySelector<HTMLInputElement>('input')?.value||''):el.value
     } else draft!.labels[name]=el.value
     markDirty()
+    if (chipScrollTop !== null) { const top = chipScrollTop; requestAnimationFrame(() => { body.scrollTop = top; chipScrollTop = null }) }
   }))
   body.querySelectorAll<HTMLInputElement>('[data-custom-single]').forEach(el=>el.addEventListener('input',()=>{draft!.labels[el.dataset.customSingle!]=CUSTOM_PREFIX+el.value;markDirty()}))
   body.querySelectorAll<HTMLInputElement>('[data-custom-multi]').forEach(el=>el.addEventListener('input',()=>{updateMultiValue(el.dataset.customMulti!,body);markDirty()}))
