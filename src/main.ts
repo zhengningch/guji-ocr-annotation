@@ -190,7 +190,20 @@ function loadCurrent() {
   draft.labels.栏数 ||= '一'
   draft.labels.字体 = Array.isArray(draft.labels.字体) ? (draft.labels.字体[0] || '楷书') : (draft.labels.字体 || '楷书')
   if (draft.labels.图文版面 === '纯文字') draft.labels.图文版面 = '无'
-  renderImage(); renderEditor(); updateProgress()
+  try {
+    renderImage(); renderEditor(); updateProgress()
+  } catch (error) {
+    console.error('加载标注页失败：', error)
+    renderEditorError(error)
+  }
+}
+
+function renderEditorError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  const body = document.querySelector('#editorBody')
+  if (body) body.innerHTML = `<div class="editor-error"><b>此页标注内容加载失败</b><span>请刷新页面后重试；若仍出现，请将以下信息发给管理员：</span><code>${esc(message)}</code></div>`
+  const stage = document.querySelector('#imageStage')
+  if (stage && !stage.querySelector('img')) stage.innerHTML = '<div class="empty light">图片加载失败</div>'
 }
 
 function imageUrl(task = draft!) { return `${location.origin}${basePath}images/${encodeURIComponent(task.image_path)}` }
@@ -219,6 +232,7 @@ function renderEditor() {
     <details open><summary><span>阅读与流通</span><small>批注圈点、印章、磨损、数字化</small></summary><div class="details-body">${multiField('阅读痕迹', l.阅读痕迹)}${singleField('印章',l.印章)}${multiField('磨损情况', l.磨损情况)}${multiField('数字化干扰', l.数字化干扰)}</div></details>
     <div class="optional-note">${textField('备注', l.备注, '可选，不填写也可以保存')}</div>`
   bindEditor(); updateSaveState(); updateMissingHint()
+  document.querySelector<HTMLElement>('#editorBody')!.scrollTop = 0
 }
 
 const fieldTitles: Record<string,string> = { 内容部类:'内容来源（经史子集）', 页面位置:'位置来源', 制作方式:'制作方式与技术类型', 时代:'刻印时代', 图文版面:'图文', 阅读痕迹:'批注／圈点' }
