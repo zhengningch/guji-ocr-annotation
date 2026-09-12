@@ -283,6 +283,9 @@ function bindEditor() {
   body.addEventListener('pointerdown', event => { if ((event.target as HTMLElement).closest('.chip')) chipScrollTop = body.scrollTop })
   textarea.addEventListener('beforeinput',()=>{undoText=editorText();updateUndoButton()})
   textarea.addEventListener('input',()=>{draft!.corrected_text=editorText();clearBertMarks();markDirty()})
+  body.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-field]').forEach(input=>input.closest('label')?.addEventListener('click',event=>{
+    event.preventDefault();input.checked=!input.checked;updateMultiValue(input.dataset.field!,body);markDirty()
+  }))
   body.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-field]').forEach(el=>el.addEventListener('input',()=>{
     const name=el.dataset.field!
     if(el.type==='checkbox') updateMultiValue(name,body)
