@@ -74,7 +74,7 @@ h1 { margin: 2px 0 0; font: 700 26px/1.2 "Noto Serif SC", serif; color: #491313;
 .chip-field legend { margin-bottom: 7px; }
 .question-toggle { display: inline-grid; width: 18px; height: 18px; place-items: center; margin-left: 7px; padding: 0; border: 1px solid #c9c4bb; border-radius: 50%; color: #7d766d; background: #fff; font-size: 12px; font-weight: 700; vertical-align: middle; }.question-toggle.active { border-color: #d38527; color: #fff; background: #d38527; }.has-question > legend,.control-question.has-question .control>span { color: #a75e13; }.question-note { display: none; margin-top: 8px; }.question-note.show { display: block; }.question-note input { width: 100%; height: 34px; padding: 0 10px; border: 1px solid #e6c99f; border-radius: 4px; background: #fff9ef; outline: none; font-size: 12px; }
 .chip-field > div { display: flex; gap: 6px; flex-wrap: wrap; }
-.chip input { position: fixed; top: 0; left: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+.chip input { position: absolute; opacity: 0; pointer-events: none; }
 .chip span { display: inline-block; padding: 5px 9px; border: 1px solid #d7d3cb; border-radius: 3px; background: #fff; color: #67645f; font-size: 12px; cursor: pointer; }
 .chip.selected span { border-color: #8f4a43; color: #722d28; background: #f7ebe7; font-weight: 600; }
 .custom-answer { display: none; width: 100%; margin-top: 8px; }.custom-answer.show { display: block; }.custom-answer input { width: 100%; height: 36px; padding: 0 10px; border: 1px solid #b9b3aa; border-radius: 3px; background: #fffefa; outline: none; }.custom-answer input:focus { border-color: #8f4a43; box-shadow: 0 0 0 2px #8f4a4310; }
