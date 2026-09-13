@@ -32,7 +32,7 @@ returns table(user_id uuid, nickname text, seen_at timestamptz)
 language plpgsql security definer set search_path = public as $$
 begin
   if not exists(select 1 from public.app_users where access_token = p_token) then raise exception '登录已失效'; end if;
-  delete from public.workspace_presence where seen_at < now() - interval '90 seconds';
+  delete from public.workspace_presence as wp where wp.seen_at < now() - interval '90 seconds';
   return query select au.id, au.nickname, wp.seen_at
   from public.workspace_presence wp join public.app_users au on au.id = wp.user_id
   order by wp.seen_at desc;
