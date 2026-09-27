@@ -130,6 +130,13 @@ async function startApp() {
 }
 
 function renderLoading() { app.innerHTML = '<div class="page-loading"><div class="auth-logo">古</div><span>正在连接标注数据库…</span></div>' }
+function exportTasks(){
+  const fields=['sample_id','image_path','original_filename','batch','note','ocr_initial','corrected_text','status','labels','bert_alerts','annotator_name','reviewer_note','revision','updated_at']
+  const quote=(value:unknown)=>`"${String(value??'').replace(/"/g,'""')}"`
+  const rows=tasks.map(task=>fields.map(field=>quote(field==='labels'?JSON.stringify(task.labels):field==='bert_alerts'?JSON.stringify(task.bert_alerts||[]):task[field as keyof Task])).join(',')).join('\n')
+  const blob=new Blob(['\ufeff'+fields.join(',')+'\n'+rows],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a')
+  link.href=url;link.download=`古籍OCR标注_${new Date().toISOString().slice(0,10)}.csv`;link.click();URL.revokeObjectURL(url);toast(`已导出 ${tasks.length} 条标注数据`)
+}
 async function refreshPresence(){if(!userToken)return;const el=document.querySelector<HTMLElement>('#onlineUsers');const unavailable=(message:string)=>{console.warn('[presence]',message);if(el){el.textContent='在线状态暂不可用';el.classList.add('offline');el.title=message}};const {error}=await supabase.rpc('record_workspace_presence',{p_token:userToken});if(error){unavailable(error.message);return};const [{data:online,error:onlineError},{data:members,error:memberError}]=await Promise.all([supabase.rpc('get_workspace_presence',{p_token:userToken}),supabase.rpc('get_task_participants',{p_token:userToken})]);if(onlineError||memberError){unavailable(onlineError?.message||memberError?.message||'读取在线状态失败');return}if(Array.isArray(members))participants=members as typeof participants;if(el&&Array.isArray(online)){el.classList.remove('offline');el.title='当前在线用户，约每 30 秒更新';el.textContent=`在线 ${online.length}：${online.map((x:{nickname:string})=>x.nickname).join('、')||'—'}`}}
 function startPresence(){window.clearInterval(presenceTimer);refreshPresence();presenceTimer=window.setInterval(refreshPresence,30000)}
 function renderSetupError(message: string) {
@@ -143,10 +150,11 @@ function renderShell() {
     <div class="brand"><span class="brand-mark">古</span><div><strong>古籍 OCR 标注</strong><small id="progressText"></small></div></div>
     <div class="view-tabs"><button id="workspaceTab" class="active">标注工作台</button><button id="dashboardTab">进度概览</button></div>
     <div class="filters" id="filters"><select id="batchFilter"><option value="">全部批次</option><option>一期</option><option>二期</option><option>三期</option></select><select id="statusFilter"><option value="">全部状态</option>${selectOptions.任务状态.map(x => `<option>${x}</option>`).join('')}</select><input id="sampleSearch" placeholder="跳转编号，如 428" inputmode="numeric"></div>
-    <div class="user-menu"><span id="onlineUsers" class="online-users" title="当前在线用户">在线加载中…</span><span>${esc(displayName)}</span><button id="logoutBtn" title="退出">退出</button></div>
+    <div class="user-menu"><span id="onlineUsers" class="online-users" title="当前在线用户">在线加载中…</span><span>${esc(displayName)}</span><button id="exportBtn" title="下载当前标注数据">导出</button><button id="logoutBtn" title="退出">退出</button></div>
   </header>
   <div id="mainView"></div><div id="saveSignal" class="save-signal" aria-live="polite"><i></i><span></span></div><div id="toast" class="toast"></div><div id="lightbox" class="lightbox" hidden><button id="closeLightbox">×</button><img alt="古籍大图"></div>`
   document.querySelector('#logoutBtn')!.addEventListener('click', logout)
+  document.querySelector('#exportBtn')!.addEventListener('click', exportTasks)
   document.querySelector('#workspaceTab')!.addEventListener('click', () => switchMode(false))
   document.querySelector('#dashboardTab')!.addEventListener('click', () => switchMode(true))
   document.querySelector('#batchFilter')!.addEventListener('change', applyFilters)
