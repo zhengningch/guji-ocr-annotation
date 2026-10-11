@@ -49,7 +49,8 @@ def request_json(url: str, key: str, method: str = "GET", body=None, extra_heade
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             # 权限/参数错误重试无益；限流或服务端错误可以重试。
-            if exc.code < 500 and exc.code != 429:
+            retryable_http = {301, 302, 307, 308, 408, 429}
+            if exc.code < 500 and exc.code not in retryable_http:
                 raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
             last_error = RuntimeError(f"HTTP {exc.code}: {detail}")
         except Exception as exc:
