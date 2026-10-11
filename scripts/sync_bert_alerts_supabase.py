@@ -13,6 +13,7 @@ import getpass
 import json
 import os
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -39,13 +40,23 @@ def request_json(url: str, key: str, method: str = "GET", body=None, extra_heade
     if extra_headers:
         headers.update(extra_headers)
     req = Request(url, data=data, headers=headers, method=method)
-    try:
-        with urlopen(req, timeout=30) as response:
-            raw = response.read()
-            return json.loads(raw) if raw else None
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+    last_error = None
+    for attempt in range(6):
+        try:
+            with urlopen(req, timeout=45) as response:
+                raw = response.read()
+                return json.loads(raw) if raw else None
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            # 权限/参数错误重试无益；限流或服务端错误可以重试。
+            if exc.code < 500 and exc.code != 429:
+                raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+            last_error = RuntimeError(f"HTTP {exc.code}: {detail}")
+        except Exception as exc:
+            last_error = exc
+        if attempt < 5:
+            time.sleep(min(0.5 * (2 ** attempt), 8.0))
+    raise RuntimeError(f"请求重试 6 次仍失败：{last_error}") from last_error
 
 
 def main() -> None:
@@ -53,7 +64,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="同步 BERT alerts 到 Supabase")
     parser.add_argument("--input", type=Path, default=project / "supabase/bert_alerts_new.csv")
     parser.add_argument("--url", default=os.getenv("SUPABASE_URL", DEFAULT_URL))
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=1, help="并发数；默认 1 以避免 macOS TLS 并发错误")
     parser.add_argument("--yes", action="store_true", help="跳过确认（不建议交互运行时使用）")
     args = parser.parse_args()
 
@@ -62,6 +73,8 @@ def main() -> None:
         key = getpass.getpass("粘贴 Supabase service_role/secret key（输入不会显示）：").strip()
     if not key:
         parser.error("未提供 Supabase service role key")
+    if key.startswith("sb_publishable_"):
+        parser.error("publishable key 没有写入权限；请使用 sb_secret_* 或旧 service_role key")
 
     with args.input.open(encoding="utf-8-sig", newline="") as f:
         source = list(csv.DictReader(f))
@@ -77,11 +90,14 @@ def main() -> None:
 
     endpoint = args.url.rstrip("/") + "/rest/v1/tasks"
     query = urlencode({"select": "sample_id,bert_alerts", "order": "sample_id.asc"})
-    live = request_json(f"{endpoint}?{query}", key)
-    live_ids = {int(row["sample_id"]) for row in live}
-    missing = sorted(set(updates) - live_ids)
+    live = request_json(f"{endpoint}?{query}", key) or []
+    live_by_id = {int(row["sample_id"]): row.get("bert_alerts") or [] for row in live}
+    missing = sorted(set(updates) - set(live_by_id))
+    if len(missing) == len(updates):
+        raise RuntimeError("无法读取任何 tasks；很可能使用了 publishable/anon key，请改用 secret/service_role key")
     if missing:
         raise RuntimeError(f"线上缺少 {len(missing)} 个 sample_id，已中止：{missing[:20]}")
+    pending = {sample_id: alerts for sample_id, alerts in updates.items() if live_by_id[sample_id] != alerts}
 
     backup_dir = project / "supabase/backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -95,10 +111,14 @@ def main() -> None:
                 "bert_alerts": json.dumps(row.get("bert_alerts") or [], ensure_ascii=False, separators=(",", ":")),
             })
     print(f"线上备份：{backup}")
-    print(f"即将更新 {len(updates)} 页，共 {sum(map(len, updates.values()))} 个疑错标记。")
+    print(f"已是最新：{len(updates) - len(pending)} 页；仍需更新：{len(pending)} 页。")
+    if not pending:
+        print(f"线上数据已经全部同步：{len(updates)} 页。")
+        return
+    print(f"待写入疑错标记共 {sum(map(len, pending.values()))} 个。")
     if not args.yes:
-        answer = input(f"请输入 UPDATE {len(updates)} 继续：").strip()
-        if answer != f"UPDATE {len(updates)}":
+        answer = input(f"请输入 UPDATE {len(pending)} 继续：").strip()
+        if answer != f"UPDATE {len(pending)}":
             print("已取消，线上数据未修改。")
             return
 
@@ -117,7 +137,7 @@ def main() -> None:
     failures = []
     done = 0
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(patch, item): item[0] for item in updates.items()}
+        futures = {pool.submit(patch, item): item[0] for item in pending.items()}
         for future in as_completed(futures):
             sample_id = futures[future]
             try:
@@ -125,8 +145,8 @@ def main() -> None:
             except Exception as exc:
                 failures.append((sample_id, str(exc)))
             done += 1
-            if done % 50 == 0 or done == len(updates):
-                print(f"进度：{done}/{len(updates)}", flush=True)
+            if done % 50 == 0 or done == len(pending):
+                print(f"进度：{done}/{len(pending)}", flush=True)
 
     if failures:
         print(f"失败 {len(failures)} 页；可用备份恢复。", file=sys.stderr)
