@@ -26,9 +26,11 @@ DEFAULT_URL = "https://srbaqffmprctgiadklzc.supabase.co"
 def request_json(url: str, key: str, method: str = "GET", body=None, extra_headers=None):
     headers = {
         "apikey": key,
-        "Authorization": f"Bearer {key}",
         "Accept": "application/json",
     }
+    # 旧 service_role 是 JWT；新版 sb_secret_* 仅作为 apikey 使用。
+    if not key.startswith("sb_secret_"):
+        headers["Authorization"] = f"Bearer {key}"
     if body is not None:
         headers["Content-Type"] = "application/json"
         data = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
