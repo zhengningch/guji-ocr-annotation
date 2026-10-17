@@ -4,7 +4,10 @@ import './style.css'
 
 type Value = string | string[]
 type QuestionMap = Record<string, string>
-type Labels = Record<string, Value | QuestionMap>
+type OcrBox = { text: string; position?: number[] | number[][]; confidence?: number }
+type OcrLine = { text: string; position?: number[] | number[][]; words: OcrBox[] }
+type OcrLayout = { width: number; height: number; lines: OcrLine[] }
+type Labels = Record<string, Value | QuestionMap | OcrLayout>
 type BertAlert = { offset: number; char: string; error_prob: number }
 type Task = {
   sample_id: number
@@ -70,6 +73,7 @@ let undoText: string | null = null
 let saveSignalTimer: number | undefined
 let autoSaveTimer: number | undefined
 let presenceTimer: number | undefined
+let showOcrBoxes = true
 let participants: { sample_id: number; nickname: string }[] = []
 
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
@@ -149,7 +153,7 @@ function renderShell() {
   <header class="topbar">
     <div class="brand"><span class="brand-mark">古</span><div><strong>古籍 OCR 标注</strong><small id="progressText"></small></div></div>
     <div class="view-tabs"><button id="workspaceTab" class="active">标注工作台</button><button id="dashboardTab">进度概览</button></div>
-    <div class="filters" id="filters"><select id="batchFilter"><option value="">全部批次</option><option>一期</option><option>二期</option><option>三期</option></select><select id="statusFilter"><option value="">全部状态</option>${selectOptions.任务状态.map(x => `<option>${x}</option>`).join('')}</select><input id="sampleSearch" placeholder="跳转编号，如 428" inputmode="numeric"></div>
+    <div class="filters" id="filters"><select id="batchFilter"><option value="">全部批次</option><option>一期</option><option>二期</option><option>三期</option><option>四期</option></select><select id="statusFilter"><option value="">全部状态</option>${selectOptions.任务状态.map(x => `<option>${x}</option>`).join('')}</select><input id="sampleSearch" placeholder="跳转编号，如 428" inputmode="numeric"></div>
     <div class="user-menu"><span id="onlineUsers" class="online-users" title="当前在线用户">在线加载中…</span><span>${esc(displayName)}</span><button id="exportBtn" title="下载当前标注数据">导出</button><button id="logoutBtn" title="退出">退出</button></div>
   </header>
   <div id="mainView"></div><div id="saveSignal" class="save-signal" aria-live="polite"><i></i><span></span></div><div id="toast" class="toast"></div><div id="lightbox" class="lightbox" hidden><button id="closeLightbox">×</button><img alt="古籍大图"></div>`
@@ -182,12 +186,13 @@ function renderWorkspace() {
   const split = /^\d+(\.\d+)?%$/.test(savedSplit) && splitValue >= 35 && splitValue <= 70 ? savedSplit : '55%'
   if (split !== savedSplit) localStorage.removeItem('guji_split')
   document.querySelector('#mainView')!.innerHTML = `<main class="workspace" style="--left-pane:${split}">
-    <section class="viewer"><div class="viewer-toolbar"><span id="imageTitle">图片</span><div><button id="zoomOut" title="缩小">−</button><button id="fitImage" title="完整显示图片">适应窗口</button><button id="zoomIn" title="放大">＋</button><button id="rotateImage" title="顺时针旋转">↻</button><button id="fullImage" title="全屏查看">全屏</button></div></div><div id="imageStage" class="image-stage" title="滚轮缩放，按住拖动图片"></div></section>
+    <section class="viewer"><div class="viewer-toolbar"><span id="imageTitle">图片</span><div><button id="toggleOcrBoxes" title="显示或隐藏原始 OCR 字框">OCR 框</button><button id="zoomOut" title="缩小">−</button><button id="fitImage" title="完整显示图片">适应窗口</button><button id="zoomIn" title="放大">＋</button><button id="rotateImage" title="顺时针旋转">↻</button><button id="fullImage" title="全屏查看">全屏</button></div></div><div id="imageStage" class="image-stage" title="滚轮缩放，按住拖动图片"></div></section>
     <div id="splitter" class="splitter" title="拖动调整左右宽度"></div>
     <section class="editor"><div class="record-nav"><button id="prevBtn" class="secondary">← 上一条</button><button id="nextBtn" class="secondary">下一条 →</button></div><div id="editorBody" class="editor-body"></div><footer class="savebar"><span id="saveState">已同步</span><button id="saveBtn" class="secondary">保存</button><button id="saveNextBtn" class="primary">完成并下一条</button></footer></section>
   </main>`
   document.querySelector('#prevBtn')!.addEventListener('click', () => navigate(-1)); document.querySelector('#nextBtn')!.addEventListener('click', () => navigate(1))
   document.querySelector('#saveBtn')!.addEventListener('click', () => save(false)); document.querySelector('#saveNextBtn')!.addEventListener('click', () => save(true))
+  document.querySelector('#toggleOcrBoxes')!.addEventListener('click', () => { showOcrBoxes = !showOcrBoxes; renderOcrBoxes() })
   document.querySelector('#zoomOut')!.addEventListener('click', () => setZoom(zoom / 1.18)); document.querySelector('#zoomIn')!.addEventListener('click', () => setZoom(zoom * 1.18)); document.querySelector('#fitImage')!.addEventListener('click', fitImage)
   document.querySelector('#rotateImage')!.addEventListener('click', () => { rotation = (rotation + 90) % 360; fitImage() }); document.querySelector('#fullImage')!.addEventListener('click', openLightbox)
   bindImageInteractions(); bindSplitter()
@@ -237,12 +242,38 @@ function renderEditorError(error: unknown) {
 }
 
 function imageUrl(task = draft!) { return `${location.origin}${basePath}images/${encodeURIComponent(task.image_path)}` }
+function ocrLayout(): OcrLayout | null {
+  const value = draft?.labels?.__ocr_layout
+  return value && typeof value === 'object' && !Array.isArray(value) && 'width' in value && 'height' in value && 'lines' in value ? value as OcrLayout : null
+}
+function boxRect(position: OcrBox['position']) {
+  if (!position?.length) return null
+  const rect = position as number[]
+  const points: number[][] = typeof position[0] === 'number' ? [[rect[0], rect[1]], [rect[2], rect[3]]] : position as number[][]
+  const xs = points.map(point => point[0]).filter(Number.isFinite), ys = points.map(point => point[1]).filter(Number.isFinite)
+  if (!xs.length || !ys.length) return null
+  const left = Math.min(...xs), top = Math.min(...ys), width = Math.max(...xs) - left, height = Math.max(...ys) - top
+  return width > 0 && height > 0 ? { left, top, width, height } : null
+}
+function renderOcrBoxes() {
+  const layer = document.querySelector<HTMLElement>('#ocrBoxLayer'), data = ocrLayout(), toggle = document.querySelector<HTMLButtonElement>('#toggleOcrBoxes')
+  if (toggle) { toggle.disabled = !data; toggle.classList.toggle('active', !!data && showOcrBoxes) }
+  if (!layer) return
+  if (!data || !showOcrBoxes) { layer.replaceChildren(); return }
+  layer.replaceChildren(...data.lines.flatMap(line => line.words.map(word => {
+    const rect = boxRect(word.position); if (!rect) return null
+    const box = document.createElement('i'); box.className = 'ocr-box'; box.title = word.text
+    box.style.cssText = `left:${rect.left / data.width * 100}%;top:${rect.top / data.height * 100}%;width:${rect.width / data.width * 100}%;height:${rect.height / data.height * 100}%`
+    return box
+  }).filter((box): box is HTMLElement => !!box)))
+}
 function renderImage() {
   const url = imageUrl(); document.querySelector('#imageTitle')!.textContent = `样本 ${draft!.sample_id} · ${draft!.original_filename}`
-  document.querySelector('#imageStage')!.innerHTML = `<img id="mainImage" draggable="false" src="${url}" alt="样本 ${draft!.sample_id}">`
+  document.querySelector('#imageStage')!.innerHTML = `<div id="imageCanvas"><img id="mainImage" draggable="false" src="${url}" alt="样本 ${draft!.sample_id}"><div id="ocrBoxLayer"></div></div>`
   const image = document.querySelector<HTMLImageElement>('#mainImage')!
-  image.addEventListener('load', fitImage)
+  image.addEventListener('load', () => { const canvas = document.querySelector<HTMLElement>('#imageCanvas')!; canvas.style.width = `${image.naturalWidth}px`; canvas.style.height = `${image.naturalHeight}px`; renderOcrBoxes(); fitImage() })
   image.addEventListener('dblclick', openLightbox)
+  renderOcrBoxes()
 }
 
 function renderEditor() {
@@ -390,7 +421,7 @@ function fitImage(){
   zoom=Math.min((stage.clientWidth-36)/w,(stage.clientHeight-36)/h,1);panX=0;panY=0;transformImage()
 }
 function setZoom(v:number){zoom=Math.min(5,Math.max(.08,v));transformImage()}
-function transformImage(){const x=document.querySelector<HTMLImageElement>('#mainImage');if(x)x.style.transform=`translate(-50%,-50%) translate(${panX}px,${panY}px) scale(${zoom}) rotate(${rotation}deg)`}
+function transformImage(){const x=document.querySelector<HTMLElement>('#imageCanvas');if(x)x.style.transform=`translate(-50%,-50%) translate(${panX}px,${panY}px) scale(${zoom}) rotate(${rotation}deg)`}
 function bindImageInteractions(){
   const stage=document.querySelector<HTMLElement>('#imageStage')!;let dragging=false,lastX=0,lastY=0
   stage.addEventListener('wheel',e=>{e.preventDefault();setZoom(zoom*(e.deltaY<0?1.12:.89))},{passive:false})

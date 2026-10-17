@@ -27,8 +27,12 @@ button.primary { color: #fff; background: #8b2424; font-weight: 600; }
 .viewer-toolbar div { display: flex; gap: 5px; }
 .viewer-toolbar button { padding: 5px 9px; color: #e3e1dc; border: 1px solid #494944; background: #30302d; font-size: 12px; }
 .image-stage { flex: 1; position: relative; overflow: hidden; touch-action: none; cursor: grab; background: #292926; background-image: radial-gradient(#393935 1px,transparent 1px); background-size: 18px 18px; }
-.image-stage.dragging { cursor: grabbing; }.image-stage.dragging img { transition: none; }
-.image-stage img { position: absolute; left: 50%; top: 50%; display: block; max-width: none; max-height: none; transform-origin: center; transition: transform .1s ease; box-shadow: 0 10px 34px #0009; user-select: none; }
+.image-stage.dragging { cursor: grabbing; }.image-stage.dragging #imageCanvas { transition: none; }
+#imageCanvas { position: absolute; left: 50%; top: 50%; transform-origin: center; transition: transform .1s ease; box-shadow: 0 10px 34px #0009; user-select: none; }
+#imageCanvas img { display: block; width: 100%; height: 100%; max-width: none; max-height: none; }
+#ocrBoxLayer { position: absolute; inset: 0; pointer-events: none; }
+.ocr-box { position: absolute; border: 1px solid #f2a600; background: #f2a60012; }
+.viewer-toolbar #toggleOcrBoxes.active { color: #2a1b00; border-color: #f0bb37; background: #f5cf6a; }
 .splitter { position: relative; z-index: 5; cursor: col-resize; background: #dedbd4; transition: background .15s; }.splitter::after { content:""; position:absolute; left:2px; top:45%; width:2px; height:10%; border-radius:2px; background:#aaa69e; }.splitter:hover,.splitter.active { background:#9d5a52; }
 .viewer .loading, .light { color: #c8cbd0; }
 
